@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "manifest_version": 1,
   "description": "Mesa investigativa colaborativa com documentos, pins, fios, efeitos e ferramentas.",
-  "icon": "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@main/icon.svg",
+  "icon": "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@b5be42ffdc9ce767d4f11c423ff1e5cb1b3ae313/icon.svg",
   "author": "Onze1Onze",
   "homepage_url": "https://github.com/Onze1Onze/Sistema-Investigacao",
   "action": {
     "title": "Quadro Investigativo",
-    "icon": "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@main/icon.svg",
-    "popover": "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@main/index.html",
+    "icon": "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@b5be42ffdc9ce767d4f11c423ff1e5cb1b3ae313/icon.svg",
+    "popover": "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@b5be42ffdc9ce767d4f11c423ff1e5cb1b3ae313/index.html",
     "width": 1600,
     "height": 1000
   }
