@@ -607,7 +607,8 @@ function renderMinimap() {
   if (!minimapVisible) return;
   const mini=$("mini-map");
   if (!mini) return;
-  const nodes=boardState.nodes.filter((n)=>isGM || !n.gmOnly);
+  const pocketIds=new Set(privateData.pocketIds||[]);
+  const nodes=boardState.nodes.filter((n)=>(isGM || !n.gmOnly)&&!pocketIds.has(n.id));
   const marks=nodes.map((n)=>{
     const left=clamp(n.x/5000*100,0,99),top=clamp(n.y/4000*100,0,99);
     const type=n.type==="object"?"object":n.type==="note"?"note":n.type==="map"?"map":"";
@@ -620,7 +621,8 @@ function renderMinimap() {
 function renderHeader() {
   $("case-name").textContent=boardState.name;
   $("case-status").textContent=boardState.status;
-  const visible=boardState.nodes.filter((n)=>isGM || !n.gmOnly).length;
+  const pocketIds=new Set(privateData.pocketIds||[]);
+  const visible=boardState.nodes.filter((n)=>(isGM || !n.gmOnly)&&!pocketIds.has(n.id)).length;
   $("item-count").textContent=visible+" evidência(s)";
   $("wire-count").textContent=boardState.wires.length+" conexão(ões)";
   $("role-label").textContent=roleName;
@@ -1739,6 +1741,7 @@ function bindUI() {
   document.querySelectorAll("[data-panel]").forEach((button)=>button.addEventListener("click",()=>setPanel(button.dataset.panel)));
   itemLayer.addEventListener("pointerdown",(e)=>{});
   itemLayer.addEventListener("click",itemClick);
+  $("quick-actions").addEventListener("click",(e)=>{const b=e.target.closest("[data-quick]");if(b)quickAction(b.dataset.quick);});
   inspectorContent.addEventListener("click",inspectorClick);
   inspectorContent.addEventListener("input",inspectorInput);
   inspectorContent.addEventListener("change",(e)=>{
@@ -1807,12 +1810,12 @@ function bindUI() {
   $("redo-btn").addEventListener("click",redo);
   $("archive-btn").addEventListener("click",()=>{
     openModal("Arquivo do caso",'<p>Salve um backup, importe uma mesa ou comece um novo caso.</p><div class="panel-actions"><button class="btn" id="archive-export">Exportar JSON</button><button class="btn" id="archive-import">Importar JSON</button><button class="btn" id="archive-gm">Backup do mestre</button><button class="btn" id="archive-new">Novo quadro</button></div>',[{label:"Fechar",action:closeModal}]);
-    $("modal-body").addEventListener("click",(e)=>{
+    $("modal-body").onclick=(e)=>{
       if(e.target.id==="archive-export"){closeModal();exportJSON(false);}
       if(e.target.id==="archive-import"){closeModal();$("json-input").dataset.gm="false";$("json-input").click();}
       if(e.target.id==="archive-gm"){closeModal();exportJSON(true);}
       if(e.target.id==="archive-new"){closeModal();createBoardEntry();}
-    });
+    };
   });
   $("effects-btn").addEventListener("click",()=>setPanel("effects"));
   $("obs-btn").addEventListener("click",()=>{
@@ -1991,6 +1994,10 @@ async function setupOwlbear() {
         if(!data)return;
         if(data.kind==="qi-interaction"&&isGM){handleMasterRequest(event);}
         else if(data.kind==="qi-interaction-result"&&!isGM){toast(data.message||"Interação processada pelo mestre.");}
+        else if(data.kind==="qi-dice") {
+          const d=data.result||{};
+          toast((data.name||"Investigador")+" rolou "+(d.expression||"dados")+" · resultado "+(d.total==null?"?":d.total));
+        }
       });
     });
   } catch(error) {
