@@ -1332,6 +1332,18 @@ function pointerDown(e) {
   const pin=e.target.closest(".pin-dot");
   if(pin)return;
   const itemEl=e.target.closest(".item");
+  if(currentTool==="mark" && !e.target.closest(".pin-dot")) {
+    const p=screenToWorld(e.clientX,e.clientY);drawState={kind:"mark",points:[p],start:p};
+    viewport.setPointerCapture(e.pointerId);e.preventDefault();return;
+  }
+  if((currentTool==="fog" || currentTool==="reveal") && itemEl) {
+    const map=getNode(itemEl.dataset.item);
+    if(map && map.type==="map") {
+      const rect=itemEl.getBoundingClientRect(),local={x:(e.clientX-rect.left)/zoom,y:(e.clientY-rect.top)/zoom};
+      remember();drawState={kind:"fog",nodeId:map.id,stroke:{mode:currentTool==="reveal"?"reveal":"hide",radius:34,points:[local]}};
+      viewport.setPointerCapture(e.pointerId);drawFog(map);e.preventDefault();return;
+    }
+  }
   if(itemEl) {
     const node=getNode(itemEl.dataset.item);if(!node)return;
     if(currentTool==="pin"){const rect=itemEl.getBoundingClientRect();addPin(node,(e.clientX-rect.left)/zoom-8,(e.clientY-rect.top)/zoom-8);return;}
@@ -1658,3 +1670,278 @@ function inspectorInput(e) {
     const n=getSelected()[0];if(n){n.props[e.target.dataset.objectSlider]=Number(e.target.value);const el=itemLayer.querySelector('[data-item="'+n.id+'"] .object-state');if(el)el.textContent="Posição: "+e.target.value+"%";scheduleSave();}
   }
 }
+
+
+function bindUI() {
+  document.querySelectorAll("[data-tool]").forEach((button)=>button.addEventListener("click",()=>{
+    setTool(button.dataset.tool);
+    if(button.dataset.tool==="object")setPanel("catalog");
+    if(button.dataset.tool==="image"){fileTarget="image";}
+  }));
+  document.querySelectorAll("[data-panel]").forEach((button)=>button.addEventListener("click",()=>setPanel(button.dataset.panel)));
+  itemLayer.addEventListener("pointerdown",(e)=>{});
+  itemLayer.addEventListener("click",itemClick);
+  inspectorContent.addEventListener("click",inspectorClick);
+  inspectorContent.addEventListener("input",inspectorInput);
+  inspectorContent.addEventListener("change",(e)=>{
+    inspectorInput(e);
+    if(e.target.matches("[data-volume]")){boardState.settings.audio[e.target.dataset.volume]=Number(e.target.value);scheduleSave();}
+  });
+  viewport.addEventListener("pointerdown",pointerDown);
+  viewport.addEventListener("pointermove",pointerMove);
+  viewport.addEventListener("pointerup",pointerUp);
+  viewport.addEventListener("pointercancel",pointerUp);
+  viewport.addEventListener("contextmenu",(e)=>e.preventDefault());
+  viewport.addEventListener("wheel",(e)=>{
+    e.preventDefault();
+    const old=zoom,delta=e.deltaY<0?1.1:.91;
+    zoom=clamp(zoom*delta,.2,3);
+    const rect=viewport.getBoundingClientRect(),sx=e.clientX-rect.left,sy=e.clientY-rect.top;
+    tx=sx-(sx-tx)*(zoom/old);ty=sy-(sy-ty)*(zoom/old);
+    updateTransform();
+  },{passive:false});
+  viewport.addEventListener("dragover",(e)=>{e.preventDefault();viewport.style.outline="2px dashed #e5be74";});
+  viewport.addEventListener("dragleave",()=>viewport.style.outline="");
+  viewport.addEventListener("drop",(e)=>{
+    e.preventDefault();viewport.style.outline="";
+    Array.from(e.dataTransfer.files||[]).forEach(addImageFromFile);
+  });
+  $("file-input").addEventListener("change",(e)=>{
+    Array.from(e.target.files||[]).forEach(addImageFromFile);e.target.value="";
+  });
+  $("audio-input").addEventListener("change",(e)=>{
+    Array.from(e.target.files||[]).forEach((file)=>addImageFromFile(file));e.target.value="";
+  });
+  $("json-input").addEventListener("change",(e)=>{
+    if(e.target.files&&e.target.files[0])importJSONFile(e.target.files[0],e.target.dataset.gm==="true");
+    e.target.value="";
+  });
+
+  $("add-document").addEventListener("click",()=>addNode("document"));
+  $("add-note").addEventListener("click",()=>addNode("note"));
+  $("add-map").addEventListener("click",()=>{fileTarget="map";$("file-input").click();});
+  $("add-book").addEventListener("click",()=>addNode("book"));
+  $("add-object").addEventListener("click",()=>setPanel("catalog"));
+  $("zoom-in").addEventListener("click",()=>zoomAt(viewport.clientWidth/2,viewport.clientHeight/2,1.15));
+  $("zoom-out").addEventListener("click",()=>zoomAt(viewport.clientWidth/2,viewport.clientHeight/2,1/1.15));
+  $("fit-board").addEventListener("click",frameBoard);
+  $("more-board").addEventListener("click",()=>{
+    openModal("Mais ferramentas",'<div class="catalog-grid"><button class="catalog-card" data-more="import-library"><span class="art">▧</span><span><b>Biblioteca Owlbear</b><small>Importar imagens da biblioteca da sala.</small></span></button><button class="catalog-card" data-more="audio"><span class="art">♫</span><span><b>Adicionar áudio</b><small>Inserir gravação no dossiê.</small></span></button><button class="catalog-card" data-more="help"><span class="art">?</span><span><b>Ajuda</b><small>Atalhos e manual de campo.</small></span></button><button class="catalog-card" data-more="new"><span class="art">＋</span><span><b>Novo caso</b><small>Criar um quadro separado.</small></span></button></div>',[{label:"Fechar",action:closeModal}]);
+    $("modal-body").addEventListener("click",(e)=>{
+      const b=e.target.closest("[data-more]");if(!b)return;
+      const act=b.dataset.more;closeModal();
+      if(act==="import-library")importOwlbearImages();
+      if(act==="audio")$("audio-input").click();
+      if(act==="help")showHelp();
+      if(act==="new")createBoardEntry();
+    });
+  });
+  $("undo-btn").addEventListener("click",undo);
+  $("redo-btn").addEventListener("click",redo);
+  $("archive-btn").addEventListener("click",()=>{
+    openModal("Arquivo do caso",'<p>Salve um backup, importe uma mesa ou comece um novo caso.</p><div class="panel-actions"><button class="btn" id="archive-export">Exportar JSON</button><button class="btn" id="archive-import">Importar JSON</button><button class="btn" id="archive-gm">Backup do mestre</button><button class="btn" id="archive-new">Novo quadro</button></div>',[{label:"Fechar",action:closeModal}]);
+    $("modal-body").addEventListener("click",(e)=>{
+      if(e.target.id==="archive-export"){closeModal();exportJSON(false);}
+      if(e.target.id==="archive-import"){closeModal();$("json-input").dataset.gm="false";$("json-input").click();}
+      if(e.target.id==="archive-gm"){closeModal();exportJSON(true);}
+      if(e.target.id==="archive-new"){closeModal();createBoardEntry();}
+    });
+  });
+  $("effects-btn").addEventListener("click",()=>setPanel("effects"));
+  $("obs-btn").addEventListener("click",()=>{
+    document.body.classList.toggle("obs-mode");
+    document.body.classList.toggle("transparent",document.body.classList.contains("obs-mode")||boardState.surface==="transparent");
+    toast(document.body.classList.contains("obs-mode")?"Modo OBS ativado. Pressione H para retornar.":"Interface restaurada.");
+  });
+  $("case-status").addEventListener("click",()=>{
+    if(!isGM)return;
+    const next={"CASO ABERTO":"EM ANÁLISE","EM ANÁLISE":"RESOLVIDO","RESOLVIDO":"CASO ABERTO"};
+    boardState.status=next[boardState.status]||"CASO ABERTO";renderHeader();scheduleSave();
+  });
+  $("surface-select").addEventListener("change",(e)=>{
+    boardState.surface=e.target.value;document.body.classList.toggle("transparent",e.target.value==="transparent"||document.body.classList.contains("obs-mode"));renderHeader();scheduleSave();
+  });
+  $("uv-toggle").addEventListener("change",(e)=>{boardState.settings.uv=e.target.checked;renderHeader();renderEffects();scheduleSave();});
+  $("lamp-toggle").addEventListener("change",(e)=>{boardState.settings.lamp=e.target.checked;renderEffects();scheduleSave();});
+  $("torch-toggle").addEventListener("change",(e)=>{boardState.settings.torch=e.target.checked;renderEffects();scheduleSave();});
+  $("minimap-btn").addEventListener("click",toggleMinimap);
+  $("mobile-inspector").addEventListener("click",()=>inspector.classList.toggle("open"));
+  $("inspector-close").addEventListener("click",()=>inspector.classList.remove("open"));
+  $("help-btn").addEventListener("click",showHelp);
+  $("help-close").addEventListener("click",hideHelp);
+  $("help-overlay").addEventListener("click",(e)=>{if(e.target.id==="help-overlay")hideHelp();});
+  $("modal-close").addEventListener("click",closeModal);
+  $("modal-backdrop").addEventListener("click",(e)=>{if(e.target.id==="modal-backdrop")closeModal();});
+  $("sanity-widget").addEventListener("dblclick",()=>{
+    openModal("Sanidade",'<div class="field"><label>Valor</label><input id="sanity-edit" type="number" min="0" max="100" value="'+boardState.settings.sanity.value+'"></div>',[
+      {label:"Cancelar",action:closeModal},
+      {label:"Aplicar",primary:true,action:()=>{
+        boardState.settings.sanity.value=clamp(Number($("sanity-edit").value),0,100);closeModal();renderHeader();scheduleSave();
+      }}
+    ]);
+  });
+  $("viewport").addEventListener("pointermove",(e)=>{
+    if(boardState.settings.torch||boardState.settings.light.mode==="torch") {
+      const r=viewport.getBoundingClientRect();torchPoint={x:(e.clientX-r.left)/r.width*100,y:(e.clientY-r.top)/r.height*100};updateLight();
+    }
+  });
+  $("mini-map").addEventListener("click",(e)=>{
+    const r=e.currentTarget.getBoundingClientRect(),px=(e.clientX-r.left)/r.width,py=(e.clientY-r.top)/r.height;
+    tx=viewport.clientWidth/2-px*5000*zoom;ty=viewport.clientHeight/2-py*4000*zoom;updateTransform();
+  });
+}
+function zoomAt(screenX,screenY,factor) {
+  const old=zoom;zoom=clamp(zoom*factor,.2,3);
+  tx=screenX-(screenX-tx)*(zoom/old);ty=screenY-(screenY-ty)*(zoom/old);
+  updateTransform();
+}
+function keyDown(e) {
+  const typing=e.target && (["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName)||e.target.isContentEditable);
+  if(e.code==="Space"&&!typing){spaceDown=true;document.body.classList.add("space");e.preventDefault();return;}
+  if(typing)return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"){e.preventDefault();undo();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="y"){e.preventDefault();redo();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="d"){e.preventDefault();duplicateSelected();return;}
+  if(e.key==="Delete"||e.key==="Backspace"){deleteSelected();return;}
+  if(e.key==="0"){frameBoard();return;}
+  if(e.key==="Escape"){setTool("select");hideLens();hideHelp();closeModal();return;}
+  if(e.key==="["){setLayer("back");return;}
+  if(e.key==="]"){setLayer("front");return;}
+  const shortcuts={v:"select",p:"pin",f:"wire",n:"note",i:"image",c:"mark",t:"tape",r:"scratch",k:"object",l:"lens"};
+  if(shortcuts[e.key.toLowerCase()]) {
+    const tool=shortcuts[e.key.toLowerCase()];
+    if(tool==="note")addNode("note");
+    else if(tool==="image"){$("file-input").click();}
+    else if(tool==="object")setPanel("catalog");
+    else if(tool==="tape")addNode("tape");
+    else if(tool==="scratch")addNode("scratch");
+    else setTool(tool);
+    return;
+  }
+  if(e.key.toLowerCase()==="m"){toggleMinimap();return;}
+  if(e.key.toLowerCase()==="b"){boardState.settings.uv=!boardState.settings.uv;renderAll();scheduleSave();return;}
+  if(e.key.toLowerCase()==="j"){boardState.settings.torch=!boardState.settings.torch;renderAll();scheduleSave();return;}
+  if(e.key.toLowerCase()==="h"){$("obs-btn").click();return;}
+}
+function keyUp(e) {
+  if(e.code==="Space"){spaceDown=false;document.body.classList.remove("space");}
+}
+async function loadSceneWorkspace() {
+  if(!OBR_API||!sceneReady)return;
+  try {
+    const metadata=await OBR_API.scene.getMetadata();
+    const incoming=metadata&&metadata[META_KEY];
+    if(incoming&&incoming.version===3&&Array.isArray(incoming.boards)) {
+      const local=workspace;
+      workspace=normalizeWorkspace(incoming);
+      if(isGM&&local) {
+        workspace.boards.forEach((entry)=>{
+          const localEntry=local.boards.find((b)=>b.id===entry.id);
+          if(localEntry) {
+            const privateNodes=(localEntry.data.nodes||[]).filter((n)=>n.gmOnly);
+            const ids=new Set(entry.data.nodes.map((n)=>n.id));
+            entry.data.nodes.push(...privateNodes.filter((n)=>!ids.has(n.id)));
+            const privateWires=(localEntry.data.wires||[]).filter((w)=>{
+              const a=localEntry.data.nodes.find((n)=>n.id===w.from.nodeId),b=localEntry.data.nodes.find((n)=>n.id===w.to.nodeId);
+              return a&&b&&(a.gmOnly||b.gmOnly);
+            });
+            entry.data.wires.push(...privateWires);
+          }
+        });
+      }
+      bindActiveBoard();remoteTimestamp=incoming.updatedAt||0;
+      try{localStorage.setItem(LOCAL_KEY,JSON.stringify(workspace));}catch(error){}
+      $("connection").classList.add("connected");$("connection-text").textContent="Cena sincronizada";
+      $("save-status").textContent="Mesa carregada da cena";
+      renderAll();
+    } else {
+      $("connection-text").textContent="Cena pronta · salvando quadro";
+      await persistNow();
+    }
+  } catch(error) {
+    console.warn("Falha ao ler metadados da cena.",error);
+    $("connection-text").textContent="Sem sincronização";
+    toast("Não foi possível carregar o quadro compartilhado.");
+  }
+}
+async function setupOwlbear() {
+  try {
+    if(!OBR_API || !OBR_API.isAvailable) {
+      $("connection-text").textContent="Modo independente";
+      return;
+    }
+    isOwlbear=true;
+    OBR_API.onReady(async()=>{
+      try {
+        await OBR_API.action.setWidth(1600);
+        await OBR_API.action.setHeight(1000);
+      } catch(error) { console.info("O Owlbear manteve o tamanho padrão do painel.",error); }
+      try {
+        const role=await OBR_API.player.getRole();
+        isGM=role==="GM";
+        canEdit=isGM;
+        roleName=isGM?"Mestre":"Jogador";
+      } catch(error) {isGM=true;canEdit=true;}
+      $("connection-text").textContent="Owlbear · conectado";
+      sceneReady=await OBR_API.scene.isReady().catch(()=>false);
+      if(sceneReady)await loadSceneWorkspace();
+      else $("connection-text").textContent="Abra uma cena";
+      OBR_API.scene.onReadyChange(async(ready)=>{
+        sceneReady=ready;
+        if(ready)await loadSceneWorkspace();
+        else{$("connection").classList.remove("connected");$("connection-text").textContent="Sem cena ativa";$("save-status").textContent="Salvamento local";}
+      });
+      OBR_API.scene.onMetadataChange((metadata)=>{
+        const incoming=metadata&&metadata[META_KEY];
+        if(!incoming||incoming.writer===CLIENT_ID||Number(incoming.updatedAt||0)<=remoteTimestamp)return;
+        remoteTimestamp=incoming.updatedAt;
+        if(isGM) {
+          const local=workspace;
+          const remote=normalizeWorkspace(incoming);
+          remote.boards.forEach((entry)=>{
+            const localEntry=local.boards.find((b)=>b.id===entry.id);
+            if(localEntry) {
+              const privateNodes=(localEntry.data.nodes||[]).filter((n)=>n.gmOnly);
+              const remoteIds=new Set(entry.data.nodes.map((n)=>n.id));
+              entry.data.nodes.push(...privateNodes.filter((n)=>!remoteIds.has(n.id)));
+            }
+          });
+          workspace=remote;
+        } else workspace=normalizeWorkspace(incoming);
+        bindActiveBoard();selectedIds=[];renderAll();
+        try{localStorage.setItem(LOCAL_KEY,JSON.stringify(workspace));}catch(error){}
+        toast("Quadro atualizado por outro participante.");
+      });
+    });
+  } catch(error) {
+    console.warn("SDK Owlbear indisponível.",error);
+    $("connection-text").textContent="Modo independente";
+  }
+}
+function applyStoredCamera() {
+  if(boardState.camera) {
+    tx=Number(boardState.camera.x)||0;
+    ty=Number(boardState.camera.y)||0;
+    zoom=clamp(Number(boardState.camera.zoom)||.72,.2,3);
+    if(tx===0&&ty===0)frameBoard();else updateTransform();
+  } else frameBoard();
+}
+function init() {
+  loadLocal();
+  bindUI();
+  applyStoredCamera();
+  renderAll();
+  window.addEventListener("keydown",keyDown);
+  window.addEventListener("keyup",keyUp);
+  window.addEventListener("resize",()=>{renderMinimap();});
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden){lastActivity=Date.now();stopAmbient();}
+  });
+  setupOwlbear();
+  scheduleSave();
+  if(!isOwlbear) {
+    $("save-status").textContent="Salvamento local";
+    $("connection-text").textContent="Modo independente";
+  }
+}
+init();
