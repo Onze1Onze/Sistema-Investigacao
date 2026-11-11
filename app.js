@@ -504,7 +504,11 @@ function renderNode(node) {
     content='<div class="image-body"><img src="'+esc(safeSrc(node.src))+'" alt="'+esc(node.title)+'">'+(node.caption?'<div class="image-caption">'+esc(node.caption)+'</div>':'')+(node.type==="map"?'<canvas class="fog-canvas" data-fog-canvas="'+esc(node.id)+'"></canvas>':'')+'</div>';
   } else if (node.type==="document" || node.type==="pdf" || node.type==="leaf") {
     const body = node.face==="back" ? (node.backBody || "Verso sem anotações.") : (node.body || "");
-    content='<div class="item-body">'+(node.type==="document"?'<div class="paper-header">'+esc(node.title)+'</div>':'')+esc(body)+(node.uvSecret?'<div class="uv-secret secret-text">'+esc(node.uvText || "Uma mensagem aparece sob luz negra.")+'</div>':'')+'</div>';
+    if(node.type==="pdf") {
+      content='<div class="item-body"><div class="paper-header">'+esc(node.title)+'</div>▤ Documento PDF anexado.<p><a href="'+esc(safeSrc(node.src))+'" target="_blank" rel="noopener">Abrir documento ↗</a></p>'+esc(body)+'</div>';
+    } else {
+      content='<div class="item-body">'+(node.type==="document"?'<div class="paper-header">'+esc(node.title)+'</div>':'')+esc(body)+(node.uvSecret?'<div class="uv-secret secret-text">'+esc(node.uvText || "Uma mensagem aparece sob luz negra.")+'</div>':'')+'</div>';
+    }
   } else if (node.type==="note") {
     content='<div class="item-body" contenteditable="false">'+esc(node.body || "")+'</div>';
   } else if (node.type==="book") {
