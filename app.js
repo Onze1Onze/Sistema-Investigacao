@@ -776,7 +776,7 @@ function renderBoardsPanel() {
 }
 function renderSharePanel() {
   inspectorTitle.textContent="Jogar junto";
-  html='<h2>Colaboração da mesa</h2>';
+  let html='<h2>Colaboração da mesa</h2>';
   const state=isOwlbear?(sceneReady?"Cena aberta e pronta para sincronizar":"Aguardando uma cena do Owlbear"):"Executando fora do Owlbear";
   html+='<div class="sync-card"><strong>'+esc(state)+'</strong><small>'+(isOwlbear?(sceneReady?"O mestre grava o quadro nos metadados da cena. Todos os jogadores que usam a mesma cena recebem as alterações.":"Abra uma cena para carregar ou sincronizar o dossiê."):"O salvamento está neste dispositivo. Abra a extensão dentro de uma sala do Owlbear para compartilhar a mesa.")+'</small></div>';
   html+='<div class="fx-status"><span style="background:'+(isGM?'#8db56e':'#d3ad5b')+'"></span>'+(isGM?"Permissão de mestre":"Visualização de jogador")+'</div>';
@@ -806,4 +806,255 @@ function renderAll() {
   updateTransform();
   updateLight();
   renderEffects();
+}
+
+
+function openModal(title,body,buttons=[]) {
+  $("modal-title").textContent=title;
+  $("modal-body").innerHTML=body;
+  $("modal-footer").innerHTML=buttons.map((b,i)=>'<button class="btn '+(b.primary?"primary":"")+'" data-modal-action="'+i+'">'+esc(b.label)+'</button>').join("");
+  $("modal-backdrop").classList.add("show");
+  $("modal-footer").onclick=(e)=>{
+    const btn=e.target.closest("[data-modal-action]");
+    if(!btn)return;
+    const index=Number(btn.dataset.modalAction);
+    const action=buttons[index]&&buttons[index].action;
+    if(action)action();
+  };
+}
+function closeModal(){$("modal-backdrop").classList.remove("show");}
+function hashText(value) {
+  const text=String(value).trim().toUpperCase();
+  if (crypto && crypto.subtle && window.TextEncoder) {
+    return crypto.subtle.digest("SHA-256",new TextEncoder().encode(text)).then((buf)=>Array.from(new Uint8Array(buf)).map((b)=>b.toString(16).padStart(2,"0")).join(""));
+  }
+  let h=2166136261;
+  for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619);}
+  return "fnv-"+(h>>>0).toString(16);
+}
+async function verifySecret(node,key,input) {
+  const sec=secretFor(node.id);
+  const actual=sec[key];
+  const hashKey=key==="code"?"codeHash":key==="password"?"passwordHash":"frequencyHash";
+  if (actual) return String(actual).trim().toUpperCase()===String(input).trim().toUpperCase();
+  const expected=node.props[hashKey];
+  if (!expected) return false;
+  return (await hashText(input))===expected;
+}
+async function setSecret(node,key,value) {
+  secretFor(node.id)[key]=String(value);
+  persistPrivate();
+  const hashKey=key==="code"?"codeHash":key==="password"?"passwordHash":"frequencyHash";
+  node.props[hashKey]=await hashText(value);
+  scheduleSave();
+}
+function installObjectSecrets(node) {
+  if (node.type!=="object") return;
+  const type=node.props.objectType;
+  const sec=secretFor(node.id);
+  let key="",value="";
+  if(type==="safe"){key="code";value=randomCode(3);}
+  if(type==="lockbox"){key="password";value="EVIDENCIA";}
+  if(type==="radio"){key="frequency";value="147.30";}
+  if(type==="crystal"){key="vision";value="Uma silhueta observa do outro lado da janela.";}
+  if(type==="skull"){key="message";value="O que foi enterrado ainda se lembra de vocês.";}
+  if(key && !sec[key]) {
+    sec[key]=value;
+    const hashKey=key==="code"?"codeHash":key==="password"?"passwordHash":"frequencyHash";
+    hashText(value).then((hash)=>{node.props[hashKey]=hash;persistPrivate();scheduleSave();});
+    persistPrivate();
+  }
+}
+const oldAddObject=addObject;
+addObject=function(type) {
+  const node=oldAddObject(type);
+  installObjectSecrets(node);
+  scheduleSave();
+  return node;
+};
+function showSafePuzzle(node) {
+  const digits=String(secretFor(node.id).code || "000").split("");
+  openModal("Cofre de combinação",
+    '<p>Gire os três discos e tente encontrar a combinação correta.</p><div style="display:flex;gap:10px;justify-content:center;margin:16px 0">'+digits.map((d,i)=>'<label style="display:grid;gap:6px;text-align:center;color:#d7bd8b;font:700 10px var(--ui)">DISCO '+(i+1)+'<input class="safe-digit" data-digit="'+i+'" inputmode="numeric" maxlength="1" value="0" style="width:58px;text-align:center;font:700 30px ui-monospace;background:#120c08;color:#f4dba3;border:2px solid #80613b;padding:8px"></label>').join("")+'</div><div class="help">A combinação é configurada pelo mestre no painel de propriedades.</div>',
+    [{label:"Cancelar",action:closeModal},{label:"Destrancar",primary:true,action:async()=>{
+      const value=Array.from(document.querySelectorAll(".safe-digit")).map((el)=>el.value.replace(/\D/g,"").slice(-1)||"0").join("");
+      if(await verifySecret(node,"code",value)){remember();node.props.unlocked=true;node.props.objectState="open";node.props.message="O mecanismo cedeu. O cofre está aberto.";closeModal();renderAll();scheduleSave();toast("Cofre destrancado.");}
+      else toast("Combinação incorreta. O mecanismo permanece travado.");
+    }}]);
+}
+function showLockPuzzle(node) {
+  openModal("Senha da maleta",'<p>Digite a senha para liberar as travas.</p><input id="lock-password" type="password" autocomplete="off" placeholder="Senha da maleta" style="font:700 18px var(--typewriter);letter-spacing:.14em;text-align:center">',[{label:"Cancelar",action:closeModal},{label:"Abrir maleta",primary:true,action:async()=>{
+    const val=$("lock-password").value;
+    if(await verifySecret(node,"password",val)){remember();node.props.unlocked=true;node.props.message="A maleta foi aberta.";closeModal();renderAll();scheduleSave();toast("Maleta aberta.");}
+    else toast("Senha incorreta.");
+  }}]);
+}
+function showRadioPuzzle(node) {
+  openModal("Sintonizar rádio",'<p>Gire o seletor até encontrar a frequência correta.</p><div class="radio-dial"><input id="radio-frequency" type="number" min="80" max="180" step=".01" value="100.00" style="font:700 25px ui-monospace;text-align:center"><span>MHz</span></div><p id="radio-feedback" class="help">O chiado aumenta quando você se aproxima do sinal.</p>',[
+    {label:"Fechar",action:closeModal},
+    {label:"Sintonizar",primary:true,action:async()=>{
+      const val=Number($("radio-frequency").value).toFixed(2);
+      if(await verifySecret(node,"frequency",val)){remember();node.props.objectState="on";node.props.display="SINAL ENCONTRADO";node.props.message="Uma voz começa a falar entre os ruídos.";closeModal();renderAll();scheduleSave();toast("Sinal encontrado.");}
+      else{$("radio-feedback").textContent="Apenas estática. Ajuste a frequência e tente novamente.";node.props.display="CHIADO";renderItems();}
+    }}
+  ]);
+}
+function showCrystal(node) {
+  const sec=secretFor(node.id);
+  const message=sec.vision || node.props.message || "A névoa se move, mas nada fica nítido.";
+  if(isGM) {
+    openModal("Bola de cristal",'<div class="object-orb" style="margin:14px auto;width:110px;height:110px"></div><p>'+esc(message)+'</p><p class="help">Visão configurável pelo mestre. O conteúdo secreto permanece local até ser revelado.</p>',[
+      {label:"Fechar",action:closeModal},
+      {label:"Revelar no quadro",primary:true,action:()=>{remember();node.props.message=message;node.props.visionRevealed=true;closeModal();renderAll();scheduleSave();}}
+    ]);
+  } else {
+    openModal("Bola de cristal",'<p>'+(node.props.visionRevealed?esc(node.props.message):"A superfície turva não revela uma imagem clara.")+'</p>',[{label:"Fechar",primary:true,action:closeModal}]);
+  }
+}
+const tarotCards=[
+  ["A Torre","Ruptura, queda e revelação."],["A Lua","Ilusão, sonho e segredo."],["A Morte","Fim de um ciclo e transformação."],
+  ["O Enforcado","Sacrifício, espera e nova perspectiva."],["O Diabo","Pacto, tentação e aprisionamento."],["A Sacerdotisa","Conhecimento oculto e intuição."],
+  ["O Eremita","Isolamento e busca interior."],["A Justiça","Consequência, equilíbrio e julgamento."],["O Louco","Risco, começo e desconhecido."],
+  ["A Estrela","Esperança e orientação."],["A Roda da Fortuna","Destino e mudança inevitável."],["O Sol","Exposição, verdade e clareza."]
+];
+function tarotDraw(node) {
+  const draw=[...tarotCards].sort(()=>Math.random()-.5).slice(0,3);
+  remember();
+  node.props.tarotDraw=draw;
+  node.props.message=draw.map((c,i)=>(i+1)+". "+c[0]).join(" · ");
+  openModal("Tiragem de tarô",'<div class="catalog-grid">'+draw.map((c,i)=>'<div class="catalog-card" style="display:block;text-align:center;min-height:130px"><div style="font:34px var(--serif);color:#cda65d;margin:6px">'+["☽","☠","✶","♜","♢","☼"][i]+'</div><b>'+esc(c[0])+'</b><small>'+esc(c[1])+'</small></div>').join("")+'</div><p>Passado · Presente · Futuro</p>',[{label:"Guardar tiragem",primary:true,action:()=>{closeModal();renderAll();scheduleSave();}}]);
+}
+function showOuija(node) {
+  const letters="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  openModal("Tábua Ouija",'<p>Movimente a prancheta entre as letras e registre a resposta recebida.</p><div class="catalog-grid" style="grid-template-columns:repeat(6,1fr)">'+letters.split("").map((c)=>'<button class="btn" data-ouija-letter="'+c+'">'+c+'</button>').join("")+'<button class="btn" data-ouija-letter="SIM">SIM</button><button class="btn" data-ouija-letter="NÃO">NÃO</button><button class="btn" data-ouija-letter="ADEUS">ADEUS</button></div><div class="field" style="margin-top:12px"><label>Mensagem formada</label><input id="ouija-message" value="'+esc(node.props.message||"")+'"></div>',[
+    {label:"Cancelar",action:closeModal},
+    {label:"Registrar no objeto",primary:true,action:()=>{remember();node.props.message=$("ouija-message").value;node.props.objectState="on";closeModal();renderAll();scheduleSave();}}
+  ]);
+  $("modal-body").addEventListener("click",(e)=>{
+    const letter=e.target.closest("[data-ouija-letter]");
+    if(letter){$("ouija-message").value+=letter.dataset.ouijaLetter==="ADEUS"?" ":letter.dataset.ouijaLetter;}
+  });
+}
+function showScale(node) {
+  const outcome=Math.random();
+  const balanced=outcome>.5;
+  const message=balanced?"A pena e o coração estão em equilíbrio.":"O coração pesa mais que a pena.";
+  remember();node.props.beam=balanced?0:outcome>.25?8:-8;node.props.message=message;node.props.objectState=balanced?"solved":"idle";
+  renderAll();scheduleSave();toast(message);
+}
+function showTimer(node) {
+  const seconds=Number(node.props.seconds||60);
+  openModal("Temporizador",'<p>Defina a duração do mecanismo.</p><input id="timer-seconds" type="number" min="1" max="3600" value="'+seconds+'"><p id="timer-readout" class="help"></p>',[
+    {label:"Cancelar",action:closeModal},
+    {label:"Iniciar",primary:true,action:()=>{
+      let left=clamp(Number($("timer-seconds").value)||60,1,3600);
+      remember();node.props.seconds=left;node.props.objectState="on";closeModal();node.props.message="Contagem iniciada: "+left+"s";renderAll();scheduleSave();
+      const started=Date.now(),timer=setInterval(()=>{
+        const now=Date.now(),remaining=Math.max(0,left-Math.floor((now-started)/1000));
+        node.props.display=String(remaining)+"s";
+        const display=itemLayer.querySelector('[data-item="'+node.id+'"] .object-state');
+        if(display)display.textContent="Restam "+remaining+" segundos.";
+        if(remaining<=0){clearInterval(timer);node.props.objectState="idle";node.props.message="O tempo acabou.";node.props.display="00";renderAll();scheduleSave();playTone(440,.35);}
+      },250);
+    }}
+  ]);
+}
+function runObjectAction(node,action) {
+  if(!canEdit && isGM===false && !["safe-open","lock-open","radio-tune","crystal-open","tarot-draw","ouija-open"].includes(action))return toast("Este objeto está em modo de consulta.");
+  if(!node) return;
+  const change=(fn)=>{remember();fn();renderAll();scheduleSave();};
+  switch(action){
+    case "safe-open":return showSafePuzzle(node);
+    case "lock-open":return showLockPuzzle(node);
+    case "radio-tune":return showRadioPuzzle(node);
+    case "crystal-open":return showCrystal(node);
+    case "tarot-draw":return tarotDraw(node);
+    case "scale-test":return showScale(node);
+    case "ouija-open":return showOuija(node);
+    case "music-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?"A melodia toca lentamente.":"A caixa de música foi interrompida.";});
+    case "pendulum-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?"O pêndulo começou a oscilar.":"O pêndulo está imóvel.";});
+    case "emf-toggle":return change(()=>{const val=Math.floor(Math.random()*6);node.props.display="NÍVEL "+val;node.props.message=val>=4?"Atividade paranormal elevada.":"Atividade fraca ou inexistente.";});
+    case "thermometer-read":return change(()=>{const val=(Math.random()*20-2).toFixed(1);node.props.display=val+" °C";node.props.message=Number(val)<5?"Queda brusca de temperatura.":"Temperatura dentro do esperado.";});
+    case "candle-toggle":case "incense-toggle":case "bulb-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?"O objeto foi aceso.":"O objeto foi apagado.";});
+    case "cauldron-stir":return change(()=>{node.props.objectState="on";node.props.message=["A mistura começa a borbulhar.","Um vapor violeta sobe do caldeirão.","O líquido muda de cor.","Uma forma aparece por um instante."][Math.floor(Math.random()*4)];playTone(180,.16);});
+    case "skull-speak":return openModal("Crânio falante",'<p>'+esc(secretFor(node.id).message||node.props.message||"O crânio não responde.")+'</p>',[{label:"Fechar",primary:true,action:closeModal}]);
+    case "mirror-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?(node.props.objectType==="vampireMirror"?"O espelho não mostra reflexo algum.":"Uma figura aparece atrás de você."):"O reflexo desaparece.";});
+    case "holy-water":return openModal("Água benta",'<p>O frasco contém um líquido claro. Há um selo preso ao gargalo.</p>',[{label:"Fechar",primary:true,action:closeModal}]);
+    case "watch-toggle":return change(()=>{node.props.objectState="on";node.props.message="O relógio volta a funcionar.";node.props.display=new Date().toLocaleTimeString("pt-BR");});
+    case "timer-toggle":return showTimer(node);
+    case "vhs-toggle":case "tv-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.display=node.props.objectState==="on"?"PLAY ▸": "SEM SINAL";node.props.message=node.props.objectState==="on"?"A fita começa a rodar.":"A imagem desaparece.";});
+    case "portal-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?"O vazio se abre e começa a girar.":"A passagem se fecha.";});
+    case "mask-toggle":return change(()=>{boardState.settings.effects.mask=!boardState.settings.effects.mask;});
+    case "wisp-toggle":return change(()=>{boardState.settings.effects.wisp=!boardState.settings.effects.wisp;});
+    case "cat-toggle":return change(()=>{boardState.settings.lamp=true;node.props.message="Dois olhos refletem a luz na escuridão.";});
+    case "wall-search":return change(()=>{node.props.message="Você encontrou uma emenda irregular nos tijolos.";node.props.objectState="on";});
+    case "pouch-open":return change(()=>{node.props.message="O aroma é intenso. Um papel dobrado está escondido entre as ervas.";});
+    case "switch-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";});
+    case "dial-turn":return change(()=>{node.props.position=((Number(node.props.position||0)+25)%100);node.props.message="Disco na posição "+node.props.position+".";});
+    case "key-use":return openModal("Chave antiga",'<p>Uma chave de ferro, marcada pelo tempo. Ela pode abrir uma maleta ou mecanismo compatível.</p>',[{label:"Fechar",primary:true,action:closeModal}]);
+    case "coin-flip":return change(()=>{node.props.message=Math.random()>.5?"A moeda caiu com a face marcada para cima.":"A moeda caiu com o reverso para cima.";});
+    case "trigger-toggle":
+      if(!isGM)return toast("Somente o mestre pode acionar este mecanismo.");
+      return change(()=>{node.props.activated=!node.props.activated;node.props.message=node.props.activated?"Gatilho ativado.":"Gatilho desativado.";});
+    case "tree-state":return change(()=>{node.props.treeState=node.props.treeState==="locked"?"available":node.props.treeState==="available"?"solved":"locked";});
+    case "generic":return toast(node.props.message||"Objeto selecionado.");
+  }
+}
+function playTone(freq=220,duration=.12,type="sine") {
+  try {
+    audioContext=audioContext || new (window.AudioContext||window.webkitAudioContext)();
+    if(audioContext.state==="suspended")audioContext.resume();
+    const osc=audioContext.createOscillator(),gain=audioContext.createGain();
+    osc.type=type;osc.frequency.setValueAtTime(freq,audioContext.currentTime);
+    gain.gain.setValueAtTime(.08,audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001,audioContext.currentTime+duration);
+    osc.connect(gain);gain.connect(audioContext.destination);
+    osc.start();osc.stop(audioContext.currentTime+duration);
+  } catch(error) { console.info("Áudio não disponível.",error); }
+}
+function renderEffects() {
+  const fx=boardState.settings.effects,layer=$("fx-ash");
+  const particles=[];
+  const count=(fx.ash?18:0)+(fx.bats?3:0)+(fx.rain?30:0)+(fx.snow?22:0)+(fx.embers?18:0)+(fx.eyes?3:0);
+  for(let i=0;i<count;i++) {
+    const kind=fx.bats&&i<3?"bat":fx.rain&&i<30?"rain":fx.snow&&i<(fx.rain?30:0)+22?"snow":fx.embers&&i>(fx.rain?30:0)+(fx.snow?22:0)?"ember":fx.eyes&&i>count-3?"eye":"ash";
+    const left=Math.random()*100,delay=Math.random()*-18,duration=kind==="rain"?1+Math.random()*1.2:kind==="bat"?7+Math.random()*5:10+Math.random()*24;
+    const content=kind==="bat"?"🦇":kind==="eye"?"◉":kind==="snow"?"❄":kind==="ember"?"✦":"·";
+    const color=kind==="eye"?"#a9ef88":kind==="ember"?"#ff9a3c":kind==="ash"?"#d8c7af":"#e8e2d4";
+    particles.push('<span style="position:absolute;left:'+left+'%;top:-30px;color:'+color+';font-size:'+(kind==="bat"?18:kind==="eye"?14:8+Math.random()*8)+'px;opacity:'+(kind==="eye"?.8:.35+Math.random()*.45)+';animation:qiParticle '+duration+'s linear '+delay+'s infinite">'+content+'</span>');
+  }
+  layer.innerHTML=particles.join("");
+  const mode=boardState.settings.light.mode;
+  document.body.classList.toggle("lamp-on",!!boardState.settings.lamp || mode==="lamp" || mode==="room");
+  document.body.classList.toggle("torch-on",!!boardState.settings.torch || mode==="torch");
+  document.body.classList.toggle("uv-on",!!boardState.settings.uv || mode==="uv");
+  $("dark-overlay").style.opacity=(boardState.settings.torch || mode==="torch")?"1":(boardState.settings.lamp||mode==="lamp"||mode==="room")?".38":"0";
+  if(boardState.settings.sanity.enabled) $("sanity-widget").classList.add("show");
+}
+(function installParticleCss(){
+  if(document.getElementById("qi-particle-css"))return;
+  const st=document.createElement("style");st.id="qi-particle-css";
+  st.textContent="@keyframes qiParticle{0%{transform:translate3d(-3vw,-3vh,0) rotate(0);opacity:0}10%{opacity:.75}100%{transform:translate3d(5vw,110vh,0) rotate(360deg);opacity:0}}";
+  document.head.appendChild(st);
+})();
+function startAmbient(mode) {
+  stopAmbient();
+  try {
+    audioContext=audioContext || new (window.AudioContext||window.webkitAudioContext)();
+    if(audioContext.state==="suspended")audioContext.resume();
+    const gain=audioContext.createGain();gain.gain.value=Number(boardState.settings.audio.general)/100*.06;gain.connect(audioContext.destination);
+    const osc=audioContext.createOscillator();osc.type="sine";osc.frequency.value=mode==="wind"?68:mode==="static"?1200:42;
+    const filter=audioContext.createBiquadFilter();filter.type="lowpass";filter.frequency.value=mode==="static"?2400:250;
+    osc.connect(filter);filter.connect(gain);osc.start();
+    ambientNodes={osc:osc,gain:gain,filter:filter};
+    boardState.settings.audio.ambience=mode;
+    scheduleSave();toast("Ambiente sonoro iniciado.");
+  } catch(error) { toast("O navegador bloqueou o áudio ambiente."); }
+}
+function stopAmbient() {
+  if(!ambientNodes)return;
+  try{ambientNodes.osc.stop();ambientNodes.gain.disconnect();}catch(error){}
+  ambientNodes=null;
+  boardState.settings.audio.ambience="none";
+  scheduleSave();
 }
