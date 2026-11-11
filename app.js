@@ -1058,3 +1058,269 @@ function stopAmbient() {
   boardState.settings.audio.ambience="none";
   scheduleSave();
 }
+
+
+function addPin(node,localX=null,localY=null) {
+  if(!canEdit)return toast("Apenas o mestre pode modificar os pins.");
+  remember();
+  const x=localX==null?node.w-24:clamp(localX,0,node.w-18);
+  const y=localY==null?Math.round(node.h*.45):clamp(localY,0,node.h-18);
+  node.pins=node.pins||[];
+  const pin={id:uid("pin"),x:x,y:y,label:"Pista "+(node.pins.length+1)};
+  node.pins.push(pin);renderItems();scheduleSave();toast("Pin adicionado.");
+}
+function connectPins(a,b) {
+  if(!a||!b)return;
+  if(a.nodeId===b.nodeId && a.pinId===b.pinId){wireStart=null;renderWires();return;}
+  const exists=boardState.wires.some((w)=>(
+    (w.from.nodeId===a.nodeId&&w.from.pinId===a.pinId&&w.to.nodeId===b.nodeId&&w.to.pinId===b.pinId)||
+    (w.from.nodeId===b.nodeId&&w.from.pinId===b.pinId&&w.to.nodeId===a.nodeId&&w.to.pinId===a.pinId)
+  ));
+  if(exists){wireStart=null;renderWires();return toast("Esses pins já estão conectados.");}
+  remember();boardState.wires.push({id:uid("wire"),from:a,to:b,label:"Conexão"});
+  wireStart=null;renderWires();renderHeader();scheduleSave();toast("Conexão criada.");
+}
+function deleteSelected() {
+  if(!selectedIds.length)return;
+  if(!canEdit)return toast("Apenas o mestre pode excluir evidências.");
+  remember();
+  const ids=new Set(selectedIds);
+  boardState.nodes=boardState.nodes.filter((node)=>!ids.has(node.id));
+  boardState.wires=boardState.wires.filter((wire)=>!ids.has(wire.id)&&!ids.has(wire.from.nodeId)&&!ids.has(wire.to.nodeId));
+  selectedIds.forEach((id)=>{delete privateData[id];});
+  persistPrivate();selectedIds=[];renderAll();scheduleSave();toast("Seleção removida.");
+}
+function duplicateSelected() {
+  if(!canEdit)return toast("Apenas o mestre pode duplicar evidências.");
+  const selected=getSelected();
+  if(!selected.length)return;
+  remember();
+  const map=new Map();
+  const copies=selected.map((source)=>{
+    const copy=clone(source),oldId=copy.id;
+    copy.id=uid("ev");copy.x+=36;copy.y+=36;copy.z=(copy.z||1)+1;
+    copy.pins=(copy.pins||[]).map((pin)=>{const old=pin.id;pin.id=uid("pin");map.set(old,pin.id);return pin;});
+    map.set(oldId,copy.id);
+    return copy;
+  });
+  boardState.nodes.push(...copies);
+  selectedIds=copies.map((n)=>n.id);
+  renderAll();scheduleSave();toast("Evidências duplicadas.");
+}
+function setLayer(direction) {
+  const nodes=getSelected();if(!nodes.length)return;
+  remember();
+  const top=Math.max(0,...boardState.nodes.map((n)=>n.z||0));
+  nodes.forEach((node)=>node.z=direction==="front"?top+1:Math.max(0,(node.z||1)-1));
+  renderItems();scheduleSave();
+}
+function flipSelected() {
+  const nodes=getSelected();if(!nodes.length)return;
+  remember();nodes.forEach((node)=>{node.face=node.face==="back"?"front":"back";if(node.type==="image")node.flipX=!node.flipX;});
+  renderItems();scheduleSave();
+}
+function clearBoard() {
+  if(!isGM)return toast("Apenas o mestre pode limpar o quadro.");
+  openModal("Limpar quadro atual","<p>Esta ação remove as evidências, fios e marcações do quadro aberto. Exporte um backup antes de continuar.</p>",[
+    {label:"Cancelar",action:closeModal},
+    {label:"Limpar quadro",primary:true,action:()=>{remember();boardState.nodes=[];boardState.wires=[];boardState.marks=[];selectedIds=[];closeModal();renderAll();scheduleSave();}}
+  ]);
+}
+function switchBoard(id) {
+  if(!workspace.boards.some((b)=>b.id===id))return;
+  updateWorkspaceReference();
+  workspace.activeId=id;bindActiveBoard();selectedIds=[];undoStack=[];redoStack=[];
+  tx=boardState.camera.x||0;ty=boardState.camera.y||0;zoom=boardState.camera.zoom||.72;
+  renderAll();scheduleSave();toast("Quadro aberto: "+boardState.name);
+}
+function createBoardEntry() {
+  if(!isGM)return toast("Apenas o mestre pode criar quadros.");
+  openModal("Novo quadro de investigação",'<div class="field"><label>Nome do quadro</label><input id="new-board-name" value="Novo caso investigativo"></div>',[
+    {label:"Cancelar",action:closeModal},
+    {label:"Criar quadro",primary:true,action:()=>{
+      const name=$("new-board-name").value.trim()||"Novo caso";
+      updateWorkspaceReference();
+      const b=createBoard(name);workspace.boards.push({id:b.id,name:name,data:b});workspace.activeId=b.id;
+      bindActiveBoard();selectedIds=[];undoStack=[];redoStack=[];frameBoard();closeModal();renderAll();scheduleSave();
+    }}
+  ]);
+}
+function renameBoard() {
+  openModal("Renomear quadro",'<div class="field"><label>Nome</label><input id="rename-board-name" value="'+esc(boardState.name)+'"></div>',[
+    {label:"Cancelar",action:closeModal},
+    {label:"Salvar nome",primary:true,action:()=>{
+      const name=$("rename-board-name").value.trim();if(!name)return;
+      boardState.name=name;updateWorkspaceReference();closeModal();renderAll();scheduleSave();
+    }}
+  ]);
+}
+function bookEditor(node) {
+  const pages=node.props.pages||[];
+  const index=clamp(Number(node.props.page||0),0,Math.max(0,pages.length-1));
+  const page=pages[index]||{title:"Página "+(index+1),body:""};
+  openModal("Caderno de investigação",'<div class="book-pages">'+pages.map((p,i)=>'<button data-book-page="'+i+'" class="'+(i===index?"active":"")+'">'+(i+1)+'</button>').join("")+'</div><div class="field"><label>Título da página</label><input id="book-page-title" value="'+esc(page.title)+'"></div><div class="field"><label>Conteúdo manuscrito</label><textarea id="book-page-body" class="book-editor notebook-lines">'+esc(page.body)+'</textarea></div><div class="panel-actions"><button class="btn" id="book-prev">← Anterior</button><button class="btn" id="book-next">Próxima →</button><button class="btn" id="book-tear">Arrancar esta folha</button></div>',[
+    {label:"Fechar",action:closeModal},
+    {label:"Salvar página",primary:true,action:()=>{
+      remember();const p=node.props.pages[index]||{title:"Página "+(index+1),body:""};
+      p.title=$("book-page-title").value;p.body=$("book-page-body").value;node.props.pages[index]=p;node.props.page=index;
+      closeModal();renderAll();scheduleSave();toast("Página salva.");
+    }}
+  ]);
+  $("modal-body").addEventListener("click",(e)=>{
+    const p=e.target.closest("[data-book-page]");
+    if(p){const n=Number(p.dataset.bookPage);saveBookPageTemporary(node,index);node.props.page=n;bookEditor(node);}
+    if(e.target.id==="book-prev"&&index>0){saveBookPageTemporary(node,index);node.props.page=index-1;bookEditor(node);}
+    if(e.target.id==="book-next"){saveBookPageTemporary(node,index);if(index===pages.length-1){node.props.pages.push({title:"Página "+(pages.length+1),body:""});}node.props.page=Math.min(index+1,node.props.pages.length-1);bookEditor(node);}
+    if(e.target.id==="book-tear"){saveBookPageTemporary(node,index);tearBookPage(node,index);closeModal();}
+  });
+}
+function saveBookPageTemporary(node,index) {
+  const page=node.props.pages[index];if(!page)return;
+  const title=$("book-page-title"),body=$("book-page-body");
+  if(title)page.title=title.value;if(body)page.body=body.value;
+  scheduleSave();
+}
+function tearBookPage(node,index) {
+  const pages=node.props.pages||[];if(pages.length<=1)return toast("O caderno precisa manter pelo menos uma página.");
+  const page=pages.splice(index,1)[0];
+  const leaf=addNode("leaf",{title:page.title||"Folha arrancada",body:page.body||"",filename:"FOLHA ARRANCADA",w:235,h:260});
+  node.props.page=clamp(index-1,0,pages.length-1);
+  selectedIds=[leaf.id];renderAll();scheduleSave();toast("Folha arrancada do caderno.");
+}
+function exportJSON(gm=false) {
+  updateWorkspaceReference();
+  const payload=gm?{app:"Sistema-Investigacao",version:3,workspace:workspace,privateData:privateData}:
+    {app:"Sistema-Investigacao",version:3,workspace:publicWorkspace()};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  downloadBlob(blob,"quadro-investigativo-"+slug(boardState.name)+(gm?"-mestre":"")+".json");
+}
+function slug(value){return String(value||"caso").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"caso";}
+function downloadBlob(blob,name) {
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=name;a.style.display="none";document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function exportShareCode() {
+  const json=JSON.stringify(publicWorkspace());
+  const code=btoa(unescape(encodeURIComponent(json)));
+  openModal("Código de compartilhamento",'<p>Copie o código para levar esta mesa a outro dispositivo.</p><textarea id="share-code" style="min-height:150px;font:10px ui-monospace">'+code+'</textarea>',[
+    {label:"Fechar",action:closeModal},
+    {label:"Copiar código",primary:true,action:()=>{const el=$("share-code");el.select();document.execCommand("copy");toast("Código copiado.");}}
+  ]);
+}
+function importShareCode() {
+  openModal("Importar código",'<p>Cole abaixo o código de compartilhamento.</p><textarea id="share-code" style="min-height:150px;font:10px ui-monospace"></textarea>',[
+    {label:"Cancelar",action:closeModal},
+    {label:"Importar",primary:true,action:()=>{
+      try {
+        const decoded=decodeURIComponent(escape(atob($("share-code").value.trim())));
+        const incoming=normalizeWorkspace(JSON.parse(decoded));
+        remember();workspace=incoming;bindActiveBoard();selectedIds=[];closeModal();renderAll();scheduleSave();toast("Quadro importado.");
+      } catch(error) { toast("Código inválido ou incompleto."); }
+    }}
+  ]);
+}
+function importJSONFile(file,gm=false) {
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(String(reader.result||""));
+      const next=normalizeWorkspace(data.workspace||data);
+      remember();workspace=next;bindActiveBoard();
+      if(gm&&data.privateData){privateData=Object.assign({},data.privateData);persistPrivate();}
+      selectedIds=[];renderAll();scheduleSave();toast("Arquivo de investigação importado.");
+    }catch(error){toast("Arquivo JSON inválido.");}
+  };
+  reader.readAsText(file);
+}
+function addImageFromFile(file) {
+  if(!file)return;
+  const type=(file.type||"").toLowerCase(),name=file.name||"Evidência";
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const data=String(reader.result||"");
+    if(type.startsWith("image/")) {
+      const image=new Image();
+      image.onload=()=>{
+        const scale=Math.min(1,1400/Math.max(image.naturalWidth,image.naturalHeight));
+        const w=Math.max(1,Math.round(image.naturalWidth*scale)),h=Math.max(1,Math.round(image.naturalHeight*scale));
+        const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(image,0,0,w,h);
+        const compressed=canvas.toDataURL("image/jpeg",.78);
+        addNode(fileTarget==="map"?"map":"image",{title:name.replace(/\.[^.]+$/,""),filename:name,mime:"image/jpeg",src:compressed,w:clamp(w,150,650),h:clamp(h,110,520)});
+        fileTarget="image";
+      };
+      image.onerror=()=>toast("Não foi possível carregar a imagem.");
+      image.src=data;return;
+    }
+    if(type.startsWith("text/") || /\.(txt|md|csv|log)$/i.test(name)) {
+      const content=data.startsWith("data:")?atob(data.split(",")[1]):data;
+      addNode("document",{title:name.replace(/\.[^.]+$/,""),filename:name,body:content.slice(0,12000),w:280,h:300});return;
+    }
+    if(type==="application/pdf" || /\.pdf$/i.test(name)) {
+      if(data.length>1800000)return toast("PDF muito grande. Use um link externo ou um arquivo menor.");
+      addNode("pdf",{title:name.replace(/\.pdf$/i,""),filename:name,src:data,body:"Documento PDF anexado."});return;
+    }
+    if(type.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|webm)$/i.test(name)) {
+      if(data.length>1800000)return toast("Áudio muito grande para a cena. Use um arquivo compactado ou link externo.");
+      addNode("audio",{title:name.replace(/\.[^.]+$/,""),filename:name,src:data,body:"Gravação de evidência."});return;
+    }
+    toast("Formato não suportado.");
+  };
+  reader.readAsDataURL(file);
+}
+async function importOwlbearImages() {
+  if(!OBR_API)return toast("Abra a extensão dentro do Owlbear Rodeo para acessar a biblioteca.");
+  try {
+    const assets=await OBR_API.assets.downloadImages(true,"","ATTACHMENT");
+    if(!assets||!assets.length)return;
+    assets.forEach((asset)=>{
+      const src=asset.image&&asset.image.url;
+      if(src)addNode("image",{title:asset.name||"Imagem da biblioteca",filename:asset.name||"Owlbear Asset",src:src,w:260,h:200});
+    });
+  } catch(error) { toast("Não foi possível abrir a biblioteca de imagens."); }
+}
+function exportItemPNG(node) {
+  const canvas=document.createElement("canvas");
+  canvas.width=clamp(node.w*2,120,1800);canvas.height=clamp(node.h*2,100,1400);
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle=node.type==="note"?"#eedc72":"#eee4d1";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle="#34251b";ctx.lineWidth=4;ctx.strokeRect(2,2,canvas.width-4,canvas.height-4);
+  if(node.type==="image" || node.type==="map") {
+    const im=new Image();im.onload=()=>{ctx.drawImage(im,0,0,canvas.width,canvas.height);canvas.toBlob((b)=>downloadBlob(b,slug(node.title)+".png"));};im.src=safeSrc(node.src);return;
+  }
+  ctx.fillStyle="#332316";ctx.font="bold 26px Georgia";ctx.fillText(node.title||"Evidência",24,42);
+  ctx.font="22px monospace";
+  const lines=String(node.body||node.props.message||"").split(/\n/);
+  lines.forEach((line,i)=>ctx.fillText(line.slice(0,70),24,82+i*30));
+  canvas.toBlob((b)=>downloadBlob(b,slug(node.title)+".png"));
+}
+function exportBoardPNG() {
+  const nodes=boardState.nodes.filter((n)=>isGM||!n.gmOnly);
+  if(!nodes.length)return toast("Não há evidências para exportar.");
+  const minX=Math.min(...nodes.map((n)=>n.x)),minY=Math.min(...nodes.map((n)=>n.y));
+  const maxX=Math.max(...nodes.map((n)=>n.x+n.w)),maxY=Math.max(...nodes.map((n)=>n.y+n.h));
+  const scale=Math.min(1,2600/Math.max(maxX-minX,maxY-minY));
+  const canvas=document.createElement("canvas");canvas.width=Math.max(1,(maxX-minX)*scale);canvas.height=Math.max(1,(maxY-minY)*scale);
+  const ctx=canvas.getContext("2d");ctx.fillStyle="#30251b";ctx.fillRect(0,0,canvas.width,canvas.height);
+  nodes.forEach((node)=>{
+    const x=(node.x-minX)*scale,y=(node.y-minY)*scale,w=node.w*scale,h=node.h*scale;
+    ctx.fillStyle=node.type==="note"?"#f2df6f":node.type==="object"?"#322218":"#e9dfc7";
+    ctx.fillRect(x,y,w,h);ctx.strokeStyle="#140d08";ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle=node.type==="object"?"#e7d4ad":"#251910";ctx.font=(13*scale+6)+"px Georgia";ctx.fillText(node.title||"Evidência",x+8*scale,y+20*scale);
+    if(node.type==="image"||node.type==="map") {
+      const image=new Image();image.onload=()=>ctx.drawImage(image,x,y+25*scale,w,h-25*scale);image.src=safeSrc(node.src);
+    } else {
+      ctx.font=(11*scale+5)+"px monospace";
+      String(node.body||node.props.message||"").split(/\n/).slice(0,12).forEach((line,i)=>ctx.fillText(line.slice(0,55),x+8*scale,y+(48+i*14)*scale));
+    }
+  });
+  setTimeout(()=>canvas.toBlob((blob)=>downloadBlob(blob,slug(boardState.name)+".png")),300);
+}
+function toggleMinimap() {
+  minimapVisible=!minimapVisible;
+  $("minimap").hidden=!minimapVisible;
+  renderMinimap();
+}
+function showHelp(){$("help-overlay").classList.add("show");}
+function hideHelp(){$("help-overlay").classList.remove("show");}
