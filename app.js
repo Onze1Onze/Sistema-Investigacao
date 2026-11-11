@@ -487,6 +487,7 @@ function objectInside(node) {
   if (type==="cat") art='<div class="object-art">🐈‍⬛<span style="color:#b4f58c;text-shadow:0 0 12px #b4f58c">● ●</span></div>';
   if (type==="pendulum") art='<div class="object-art" style="animation:'+(st==="on"?"wisp 1.5s infinite":"none")+'">🔻</div>';
   if (type==="tree") sub="Estado: "+({locked:"Bloqueado",available:"Disponível",solved:"Resolvido"}[node.props.treeState||"available"]);
+  if (type==="hieroglyph") art='<div class="object-art" style="transform:rotate('+(Number(node.props.position||0)*90)+'deg)">☼ ☥ ◉</div>';
   if (type==="mummy") art='<div style="font:44px var(--serif);filter:drop-shadow(0 4px 4px #0009)">🧟</div><div class="hwwrap" data-n="2"></div>';
   if (type==="lightTable") screen='<div class="object-screen" style="background:'+(st==="on"?"#c8e3d4":"#10191a")+';color:'+(st==="on"?"#173428":"#9ac4a4")+'">'+(st==="on"?"LUZ UV / LED":"DESLIGADA")+'</div>';
   if (type==="developingTray") art='<div class="object-art">▱</div>';
@@ -509,7 +510,7 @@ function renderNode(node) {
   } else if (node.type==="book") {
     const pages=node.props.pages || [];
     const page=pages[clamp(Number(node.props.page||0),0,Math.max(0,pages.length-1))] || {title:"Página",body:""};
-    content='<div class="item-body notebook-lines"><div style="font:700 10px var(--ui);letter-spacing:.15em;margin-bottom:8px">'+esc(page.title || "Página")+'</div>'+esc((page.body||"").slice(0,250))+'<div class="panel-actions"><button class="object-action" data-item-action="book-open">Abrir caderno</button></div></div>';
+    content='<div class="item-body notebook-lines"><div style="font:700 10px var(--ui);letter-spacing:.15em;margin-bottom:8px">'+esc(page.title || "Página")+'</div>'+esc((page.body||"").slice(0,250))+'<div style="font:10px var(--ui);color:#795e3d;margin-top:8px">'+((page.collages||[]).length?("▧ "+page.collages.length+" colagem(ns) anexada(s)"):"")+'</div><div class="panel-actions"><button class="object-action" data-item-action="book-open">Abrir caderno</button></div></div>';
   } else if (node.type==="audio") {
     content='<div class="item-body"><audio controls preload="metadata" style="width:100%" src="'+esc(safeSrc(node.src))+'"></audio><p>'+esc(node.body || "Gravação anexada ao caso.")+'</p></div>';
   } else if (node.type==="pdf") {
@@ -991,6 +992,8 @@ function runObjectAction(node,action) {
     case "pouch-open":return change(()=>{node.props.message="O aroma é intenso. Um papel dobrado está escondido entre as ervas.";});
     case "switch-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";});
     case "dial-turn":return change(()=>{node.props.position=((Number(node.props.position||0)+25)%100);node.props.message="Disco na posição "+node.props.position+".";});
+    case "hieroglyph-turn":return change(()=>{node.props.position=((Number(node.props.position||0)+1)%4);node.props.message="Discos alinhados na posição "+node.props.position+".";});
+    case "ankh-activate":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?"O ankh começa a emitir um brilho dourado.":"O brilho do ankh desaparece.";});
     case "key-use":return openModal("Chave antiga",'<p>Uma chave de ferro, marcada pelo tempo. Ela pode abrir uma maleta ou mecanismo compatível.</p>',[{label:"Fechar",primary:true,action:closeModal}]);
     case "coin-flip":return change(()=>{node.props.message=Math.random()>.5?"A moeda caiu com a face marcada para cima.":"A moeda caiu com o reverso para cima.";});
     case "trigger-toggle":
@@ -1166,7 +1169,7 @@ function bookEditor(node) {
   const pages=node.props.pages||[];
   const index=clamp(Number(node.props.page||0),0,Math.max(0,pages.length-1));
   const page=pages[index]||{title:"Página "+(index+1),body:""};
-  openModal("Caderno de investigação",'<div class="book-pages">'+pages.map((p,i)=>'<button data-book-page="'+i+'" class="'+(i===index?"active":"")+'">'+(i+1)+'</button>').join("")+'</div><div class="field"><label>Título da página</label><input id="book-page-title" value="'+esc(page.title)+'"></div><div class="field"><label>Conteúdo manuscrito</label><textarea id="book-page-body" class="book-editor notebook-lines">'+esc(page.body)+'</textarea></div><div class="panel-actions"><button class="btn" id="book-prev">← Anterior</button><button class="btn" id="book-next">Próxima →</button><button class="btn" id="book-tear">Arrancar esta folha</button></div>',[
+  openModal("Caderno de investigação",'<div class="book-pages">'+pages.map((p,i)=>'<button data-book-page="'+i+'" class="'+(i===index?"active":"")+'">'+(i+1)+'</button>').join("")+'</div><div class="field"><label>Título da página</label><input id="book-page-title" value="'+esc(page.title)+'"></div><div class="field"><label>Conteúdo manuscrito</label><textarea id="book-page-body" class="book-editor notebook-lines">'+esc(page.body)+'</textarea></div><div class="panel-actions"><button class="btn" id="book-add-collage">＋ Inserir colagem</button><button class="btn" id="book-prev">← Anterior</button><button class="btn" id="book-next">Próxima →</button><button class="btn" id="book-tear">Arrancar esta folha</button></div><div class="catalog-grid">'+(page.collages||[]).map((src,i)=>'<div><img src="'+esc(safeSrc(src))+'" style="max-width:100%;max-height:90px"><button class="btn danger" data-book-remove-collage="'+i+'">Remover</button></div>').join("")+'</div>',[
     {label:"Fechar",action:closeModal},
     {label:"Salvar página",primary:true,action:()=>{
       remember();const p=node.props.pages[index]||{title:"Página "+(index+1),body:""};
@@ -1180,6 +1183,8 @@ function bookEditor(node) {
     if(e.target.id==="book-prev"&&index>0){saveBookPageTemporary(node,index);node.props.page=index-1;bookEditor(node);}
     if(e.target.id==="book-next"){saveBookPageTemporary(node,index);if(index===pages.length-1){node.props.pages.push({title:"Página "+(pages.length+1),body:""});}node.props.page=Math.min(index+1,node.props.pages.length-1);bookEditor(node);}
     if(e.target.id==="book-tear"){saveBookPageTemporary(node,index);tearBookPage(node,index);closeModal();}
+    if(e.target.id==="book-add-collage"){saveBookPageTemporary(node,index);const input=document.createElement("input");input.type="file";input.accept="image/*";input.onchange=()=>{const file=input.files&&input.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{const page=node.props.pages[index];page.collages=page.collages||[];page.collages.push(String(reader.result));bookEditor(node);scheduleSave();};reader.readAsDataURL(file);};input.click();}
+    if(e.target.closest("[data-book-remove-collage]")){const idx=Number(e.target.closest("[data-book-remove-collage]").dataset.bookRemoveCollage);const page=node.props.pages[index];if(page.collages)page.collages.splice(idx,1);bookEditor(node);scheduleSave();}
   };
 }
 function saveBookPageTemporary(node,index) {
@@ -2057,6 +2062,10 @@ async function handleMasterRequest(event) {
       remember();node.props.objectState="on";node.props.message="O temporizador foi iniciado.";break;
     case "dial-turn":
       remember();node.props.position=((Number(node.props.position||0)+25)%100);break;
+    case "hieroglyph-turn":
+      remember();node.props.position=((Number(node.props.position||0)+1)%4);node.props.message="Discos alinhados na posição "+node.props.position+".";break;
+    case "ankh-activate":
+      remember();node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?"O ankh começa a emitir um brilho dourado.":"O brilho do ankh desaparece.";break;
     case "trigger-toggle":
       remember();node.props.activated=!node.props.activated;break;
     default:
