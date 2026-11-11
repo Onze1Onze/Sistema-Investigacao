@@ -603,16 +603,6 @@ function renderHeader() {
   $("sanity-fill").style.height=boardState.settings.sanity.value+"%";
   $("minimap").hidden=!minimapVisible;
 }
-function renderAll() {
-  if (!boardState) return;
-  updateTransform();
-  renderItems();
-  renderMarks();
-  renderHeader();
-  renderInspector();
-  renderMinimap();
-  updateLight();
-}
 function updateLight() {
   const light=boardState.settings.light;
   $("light-overlay").style.background="radial-gradient(ellipse at "+(light.direction==="l"?"25% 22%":light.direction==="r"?"75% 22%":"50% 18%")+", "+light.color+"88 0, transparent 54%)";
