@@ -1,15 +1,15 @@
 {
   "name": "Quadro Investigativo",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "manifest_version": 1,
-  "description": "Quadro investigativo colaborativo com enigmas, objetos, documentos, pins, fios e efeitos.",
-  "icon": "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/5c5497a96f5e7f9bf642dd0cdcc375b65dce64c6/icon.svg",
+  "description": "Quadro investigativo colaborativo com enigmas, documentos, pins, fios, dados e efeitos.",
+  "icon": "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/176d245392165f6cf8f67625734a1c5b43fde569/icon.svg",
   "author": "Onze1Onze",
   "homepage_url": "https://github.com/Onze1Onze/Sistema-Investigacao",
   "action": {
     "title": "Quadro Investigativo",
-    "icon": "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/5c5497a96f5e7f9bf642dd0cdcc375b65dce64c6/icon.svg",
-    "popover": "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/5c5497a96f5e7f9bf642dd0cdcc375b65dce64c6/index.html",
+    "icon": "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/176d245392165f6cf8f67625734a1c5b43fde569/icon.svg",
+    "popover": "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/176d245392165f6cf8f67625734a1c5b43fde569/index.html",
     "width": 1600,
     "height": 1000
   }
