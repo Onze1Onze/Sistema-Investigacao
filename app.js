@@ -5,6 +5,7 @@ const META_KEY = APP_ID + "/workspace-v3";
 const LOCAL_KEY = "sai-investigation-workspace-v3";
 const PRIVATE_KEY = "sai-investigation-private-v1";
 const CLIENT_ID = "sai-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+const BROADCAST_CHANNEL = APP_ID + "/interactions-v1";
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
@@ -847,6 +848,7 @@ function showSafePuzzle(node) {
     '<p>Gire os três discos e tente encontrar a combinação correta.</p><div style="display:flex;gap:10px;justify-content:center;margin:16px 0">'+digits.map((d,i)=>'<label style="display:grid;gap:6px;text-align:center;color:#d7bd8b;font:700 10px var(--ui)">DISCO '+(i+1)+'<input class="safe-digit" data-digit="'+i+'" inputmode="numeric" maxlength="1" value="0" style="width:58px;text-align:center;font:700 30px ui-monospace;background:#120c08;color:#f4dba3;border:2px solid #80613b;padding:8px"></label>').join("")+'</div><div class="help">A combinação é configurada pelo mestre no painel de propriedades.</div>',
     [{label:"Cancelar",action:closeModal},{label:"Destrancar",primary:true,action:async()=>{
       const value=Array.from(document.querySelectorAll(".safe-digit")).map((el)=>el.value.replace(/\D/g,"").slice(-1)||"0").join("");
+      if(!isGM && isOwlbear){sendMasterRequest("safe-unlock",node.id,{value:value});closeModal();toast("Tentativa enviada ao mestre.");return;}
       if(await verifySecret(node,"code",value)){remember();node.props.unlocked=true;node.props.objectState="open";node.props.message="O mecanismo cedeu. O cofre está aberto.";closeModal();renderAll();scheduleSave();toast("Cofre destrancado.");}
       else toast("Combinação incorreta. O mecanismo permanece travado.");
     }}]);
@@ -854,6 +856,7 @@ function showSafePuzzle(node) {
 function showLockPuzzle(node) {
   openModal("Senha da maleta",'<p>Digite a senha para liberar as travas.</p><input id="lock-password" type="password" autocomplete="off" placeholder="Senha da maleta" style="font:700 18px var(--typewriter);letter-spacing:.14em;text-align:center">',[{label:"Cancelar",action:closeModal},{label:"Abrir maleta",primary:true,action:async()=>{
     const val=$("lock-password").value;
+    if(!isGM && isOwlbear){sendMasterRequest("lockbox-unlock",node.id,{value:val});closeModal();toast("Senha enviada ao mestre.");return;}
     if(await verifySecret(node,"password",val)){remember();node.props.unlocked=true;node.props.message="A maleta foi aberta.";closeModal();renderAll();scheduleSave();toast("Maleta aberta.");}
     else toast("Senha incorreta.");
   }}]);
@@ -863,6 +866,7 @@ function showRadioPuzzle(node) {
     {label:"Fechar",action:closeModal},
     {label:"Sintonizar",primary:true,action:async()=>{
       const val=Number($("radio-frequency").value).toFixed(2);
+      if(!isGM && isOwlbear){sendMasterRequest("radio-tune",node.id,{value:val});closeModal();toast("Frequência enviada ao mestre.");return;}
       if(await verifySecret(node,"frequency",val)){remember();node.props.objectState="on";node.props.display="SINAL ENCONTRADO";node.props.message="Uma voz começa a falar entre os ruídos.";closeModal();renderAll();scheduleSave();toast("Sinal encontrado.");}
       else{$("radio-feedback").textContent="Apenas estática. Ajuste a frequência e tente novamente.";node.props.display="CHIADO";renderItems();}
     }}
@@ -929,8 +933,12 @@ function showTimer(node) {
   ]);
 }
 function runObjectAction(node,action) {
-  if(!canEdit && isGM===false && !["safe-open","lock-open","radio-tune","crystal-open","tarot-draw","ouija-open"].includes(action))return toast("Este objeto está em modo de consulta.");
   if(!node) return;
+  if(!isGM && isOwlbear && !["safe-open","lock-open","radio-tune"].includes(action)) {
+    sendMasterRequest(action,node.id,{});
+    return toast("Interação enviada ao mestre.");
+  }
+  if(!canEdit && isGM===false && !["safe-open","lock-open","radio-tune"].includes(action))return toast("Este objeto está em modo de consulta.");
   const change=(fn)=>{remember();fn();renderAll();scheduleSave();};
   switch(action){
     case "safe-open":return showSafePuzzle(node);
@@ -1914,3 +1922,67 @@ function init() {
   }
 }
 init();
+
+
+function sendMasterRequest(action,nodeId,payload={}) {
+  if(!OBR_API || !isOwlbear)return toast("Esta interação só pode ser compartilhada dentro de uma sala do Owlbear.");
+  const data={kind:"qi-interaction",action:action,nodeId:nodeId,payload:payload,sentAt:Date.now()};
+  OBR_API.broadcast.sendMessage(BROADCAST_CHANNEL,data).catch((error)=>toast("Não foi possível enviar a interação ao mestre."));
+}
+async function handleMasterRequest(event) {
+  if(!isGM || !canEdit)return;
+  const data=event&&event.data;
+  if(!data||data.kind!=="qi-interaction")return;
+  const node=getNode(data.nodeId);
+  if(!node)return;
+  let ok=true,message="Interação aplicada: "+data.action;
+  switch(data.action) {
+    case "safe-unlock":
+      ok=await verifySecret(node,"code",data.payload&&data.payload.value);
+      if(ok){remember();node.props.unlocked=true;node.props.objectState="open";node.props.message="O mecanismo cedeu. O cofre está aberto.";message="Cofre destrancado.";}
+      else message="Combinação incorreta no cofre.";
+      break;
+    case "lockbox-unlock":
+      ok=await verifySecret(node,"password",data.payload&&data.payload.value);
+      if(ok){remember();node.props.unlocked=true;node.props.message="A maleta foi aberta.";message="Maleta aberta.";}
+      else message="Senha incorreta na maleta.";
+      break;
+    case "radio-tune":
+      ok=await verifySecret(node,"frequency",data.payload&&data.payload.value);
+      if(ok){remember();node.props.objectState="on";node.props.display="SINAL ENCONTRADO";node.props.message="Uma voz começa a falar entre os ruídos.";message="O rádio encontrou o sinal.";}
+      else message="O rádio recebeu uma frequência incorreta.";
+      break;
+    case "crystal-open":
+      remember();node.props.visionRevealed=true;node.props.message=secretFor(node.id).vision||node.props.message;message="A visão da bola de cristal foi revelada.";break;
+    case "tarot-draw":
+      tarotDraw(node);message="Uma tiragem de tarô foi solicitada.";break;
+    case "scale-test":
+      remember();node.props.beam=Math.random()>.5?0:8;node.props.message=node.props.beam===0?"A pena e o coração estão em equilíbrio.":"O coração pesa mais que a pena.";break;
+    case "ouija-open":
+      remember();node.props.objectState="on";node.props.message=(data.payload&&data.payload.message)||node.props.message||"A prancheta se moveu.";message="Mensagem registrada na tábua.";break;
+    case "music-toggle":case "pendulum-toggle":case "candle-toggle":case "incense-toggle":case "mirror-toggle":case "watch-toggle":case "vhs-toggle":case "tv-toggle":case "portal-toggle":case "switch-toggle":case "bulb-toggle":case "mask-toggle":case "wisp-toggle":
+      remember();node.props.objectState=node.props.objectState==="on"?"idle":"on";break;
+    case "emf-toggle":
+      remember();{const v=Math.floor(Math.random()*6);node.props.display="NÍVEL "+v;node.props.message=v>=4?"Atividade paranormal elevada.":"Atividade fraca ou inexistente.";}break;
+    case "thermometer-read":
+      remember();{const v=(Math.random()*20-2).toFixed(1);node.props.display=v+" °C";node.props.message=Number(v)<5?"Queda brusca de temperatura.":"Temperatura dentro do esperado.";}break;
+    case "cauldron-stir":
+      remember();node.props.objectState="on";node.props.message="O caldeirão borbulha e um vapor violeta sobe.";break;
+    case "skull-speak":
+      node.props.message=secretFor(node.id).message||node.props.message;message=node.props.message;break;
+    case "holy-water":case "key-use":case "coin-flip":case "wall-search":case "pouch-open":
+      remember();node.props.objectState="on";node.props.message=data.action==="coin-flip"?(Math.random()>.5?"Cara":"Coroa"):"O objeto foi examinado.";break;
+    case "tree-state":
+      remember();node.props.treeState=node.props.treeState==="locked"?"available":node.props.treeState==="available"?"solved":"locked";break;
+    case "timer-toggle":
+      remember();node.props.objectState="on";node.props.message="O temporizador foi iniciado.";break;
+    case "dial-turn":
+      remember();node.props.position=((Number(node.props.position||0)+25)%100);break;
+    case "trigger-toggle":
+      remember();node.props.activated=!node.props.activated;break;
+    default:
+      return;
+  }
+  if(ok){renderAll();await persistNow();}
+  if(OBR_API)OBR_API.broadcast.sendMessage(BROADCAST_CHANNEL,{kind:"qi-interaction-result",message:message,ok:ok},{destination:"REMOTE"}).catch(()=>{});
+}
