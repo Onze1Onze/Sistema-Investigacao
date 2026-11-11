@@ -57,7 +57,7 @@ jobs:
           body=Path("/tmp/popover.html").read_text(errors="replace")
           checks=[
             ("popover HTTP 200", bool(re.search(r"HTTP/[^ ]+ 200",h))),
-            ("HTML MIME type", bool(re.search(r"content-type:\\s*text/html",h,re.I))),
+            ("HTML MIME type", bool(re.search(r"content-type:\s*text/html",h,re.I))),
             ("HTML document", body.lstrip().lower().startswith("<!doctype html>")),
             ("icon HTTP 200", bool(re.search(r"HTTP/[^ ]+ 200",i))),
           ]
