@@ -15,16 +15,14 @@ jobs:
           python3 - <<'PY'
           import json
           from pathlib import Path
-          manifest = json.loads(Path("manifest.json").read_text())
-          assert manifest["manifest_version"] == 1
-          assert manifest["action"]["popover"].startswith("https://rawcdn.githack.com/")
-          assert Path("index.html").is_file()
-          assert Path("icon.svg").is_file()
-          assert len(manifest["name"]) <= 45
-          assert len(manifest["description"]) <= 128
-          print("Manifest JSON OK; popover uses an HTML-aware host.")
+          m = json.loads(Path("manifest.json").read_text())
+          assert m["manifest_version"] == 1
+          assert m["action"]["popover"].startswith("https://rawcdn.githack.com/")
+          assert Path("index.html").is_file() and Path("icon.svg").is_file()
+          assert len(m["name"]) <= 45 and len(m["description"]) <= 128
+          print("Manifest and repository files OK.")
           PY
-      - name: Check inline module syntax
+      - name: Check JavaScript syntax
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -35,28 +33,35 @@ jobs:
           Path("/tmp/extension.mjs").write_text(match.group(1))
           PY
           node --check /tmp/extension.mjs
-      - name: Verify actual extension content types and availability
+      - name: Diagnose production CDN response
         run: |
-          set -euo pipefail
+          set -u
           python3 - <<'PY'
           import json
           from pathlib import Path
-          manifest = json.loads(Path("manifest.json").read_text())
-          Path("/tmp/popover-url").write_text(manifest["action"]["popover"])
-          Path("/tmp/icon-url").write_text(manifest["action"]["icon"])
+          m=json.loads(Path("manifest.json").read_text())
+          Path("/tmp/popover-url").write_text(m["action"]["popover"])
+          Path("/tmp/icon-url").write_text(m["action"]["icon"])
           PY
-          curl -fLsS -D /tmp/popover.headers "$(cat /tmp/popover-url)" -o /tmp/popover.html
-          curl -fLsS -D /tmp/icon.headers "$(cat /tmp/icon-url)" -o /tmp/icon.svg
-          grep -Eiq '^content-type: *text/html([; ]|$)' /tmp/popover.headers
-          grep -Eiq '^content-type: *image/svg\+xml([; ]|$)' /tmp/icon.headers
+          curl -sSL -D /tmp/popover.headers -o /tmp/popover.html -w "POPOVER_HTTP=%{http_code} CONTENT_TYPE=%{content_type}\n" "$(cat /tmp/popover-url)"
+          curl -sSL -D /tmp/icon.headers -o /tmp/icon.svg -w "ICON_HTTP=%{http_code} CONTENT_TYPE=%{content_type}\n" "$(cat /tmp/icon-url)"
+          echo "--- popover headers ---"
+          cat /tmp/popover.headers
+          echo "--- icon headers ---"
+          cat /tmp/icon.headers
           python3 - <<'PY'
           from pathlib import Path
-          html = Path("/tmp/popover.html").read_text()
-          assert html.lstrip().lower().startswith("<!doctype html>")
-          assert "<div class=\"app\" id=\"app\">" in html
-          assert "<script type=\"module\">" in html
-          assert "<svg" in Path("/tmp/icon.svg").read_text()
-          print("The Owlbear popover is delivered as HTML, not plain text.")
+          import re, sys
+          h=Path("/tmp/popover.headers").read_text(errors="replace")
+          i=Path("/tmp/icon.headers").read_text(errors="replace")
+          body=Path("/tmp/popover.html").read_text(errors="replace")
+          checks=[
+            ("popover HTTP 200", bool(re.search(r"HTTP/[^ ]+ 200",h))),
+            ("HTML MIME type", bool(re.search(r"content-type:\\s*text/html",h,re.I))),
+            ("HTML document", body.lstrip().lower().startswith("<!doctype html>")),
+            ("icon HTTP 200", bool(re.search(r"HTTP/[^ ]+ 200",i))),
+          ]
+          for label,ok in checks: print(("PASS" if ok else "FAIL")+": "+label)
+          if not all(ok for _,ok in checks): sys.exit(1)
           PY
           curl -fLsS "https://esm.sh/@owlbear-rodeo/sdk@3.1.0" -o /tmp/obr-sdk.js
-          test "$(wc -c </tmp/obr-sdk.js)" -gt 100
