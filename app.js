@@ -227,12 +227,14 @@ function remember() {
   redoStack = [];
 }
 function undo() {
+  if(!canEdit)return toast("Somente o mestre pode desfazer alterações compartilhadas.");
   if (!undoStack.length) return toast("Nada para desfazer.");
   redoStack.push(clone(boardState));
   boardState = normalizeBoard(undoStack.pop());
   updateWorkspaceReference(); selectedIds = []; renderAll(); scheduleSave(); toast("Última alteração desfeita.");
 }
 function redo() {
+  if(!canEdit)return toast("Somente o mestre pode refazer alterações compartilhadas.");
   if (!redoStack.length) return toast("Nada para refazer.");
   undoStack.push(clone(boardState));
   boardState = normalizeBoard(redoStack.pop());
@@ -360,6 +362,9 @@ function addObject(type) {
   return addNode("object",{title:info.name,label:info.category,w:205,h:205,props:{objectType:type,objectState:"idle",activated:false,treeState:type==="tree"?"available":"locked"}});
 }
 function setTool(tool) {
+  if(!canEdit && ["pin","wire","note","image","mark","tape","scratch","fog","reveal"].includes(tool)) {
+    toast("Essa ferramenta está disponível apenas para o mestre.");return;
+  }
   if(tool==="mark" && currentTool==="mark") {
     markMode=({free:"arrow",arrow:"circle",circle:"box",box:"line",line:"free"})[markMode]||"free";
     const label=({free:"Marcar",arrow:"Seta",circle:"Círculo",box:"Retângulo",line:"Linha"})[markMode];
@@ -702,6 +707,10 @@ function renderProperties() {
   }
   html+='<h3>Ações da evidência</h3><div class="panel-actions"><button class="btn" data-do="add-pin">＋ Pin</button><button class="btn" data-do="duplicate">Duplicar</button><button class="btn" data-do="front">Trazer à frente</button><button class="btn" data-do="back">Enviar para trás</button><button class="btn" data-do="export-png">Exportar PNG</button><button class="btn danger" data-do="delete">Excluir</button></div>';
   inspectorContent.innerHTML=html;
+  if(!canEdit) {
+    inspectorContent.querySelectorAll("input,textarea,select").forEach((el)=>{el.disabled=true;});
+    inspectorContent.querySelectorAll("button[data-do]").forEach((el)=>{if(el.dataset.do!=="interact")el.disabled=true;});
+  }
   const styleSelect=inspectorContent.querySelector('[data-edit-prop="noteStyle"]');if(styleSelect)styleSelect.value=node.props.noteStyle||"postit";
   const treeSelect=inspectorContent.querySelector('[data-edit-prop="treeState"]');if(treeSelect)treeSelect.value=node.props.treeState||"available";
 }
@@ -1104,6 +1113,7 @@ function duplicateSelected() {
   renderAll();scheduleSave();toast("Evidências duplicadas.");
 }
 function setLayer(direction) {
+  if(!canEdit)return toast("Apenas o mestre pode alterar camadas.");
   const nodes=getSelected();if(!nodes.length)return;
   remember();
   const top=Math.max(0,...boardState.nodes.map((n)=>n.z||0));
@@ -1111,6 +1121,7 @@ function setLayer(direction) {
   renderItems();scheduleSave();
 }
 function flipSelected() {
+  if(!canEdit)return toast("Apenas o mestre pode alterar evidências.");
   const nodes=getSelected();if(!nodes.length)return;
   remember();nodes.forEach((node)=>{node.face=node.face==="back"?"front":"back";if(node.type==="image")node.flipX=!node.flipX;});
   renderItems();scheduleSave();
@@ -1142,6 +1153,7 @@ function createBoardEntry() {
   ]);
 }
 function renameBoard() {
+  if(!isGM)return toast("Apenas o mestre pode renomear quadros.");
   openModal("Renomear quadro",'<div class="field"><label>Nome</label><input id="rename-board-name" value="'+esc(boardState.name)+'"></div>',[
     {label:"Cancelar",action:closeModal},
     {label:"Salvar nome",primary:true,action:()=>{
@@ -1532,6 +1544,7 @@ function moveLens(clientX,clientY) {
 function hideLens(){lensVisible=false;$("lens").classList.remove("show");}
 function scratchAt(node,clientX,clientY) {
   if(node.props.revealed)return;
+  if(!isGM && isOwlbear){sendMasterRequest("scratch-reveal",node.id,{});toast("Pedido para revelar a raspadinha enviado ao mestre.");return;}
   remember();
   node.props.progress=clamp(Number(node.props.progress||0)+12,0,100);
   if(node.props.progress>=100){node.props.revealed=true;toast("A raspadinha revelou sua mensagem.");}
@@ -2028,6 +2041,8 @@ async function handleMasterRequest(event) {
       node.props.message=secretFor(node.id).message||node.props.message;message=node.props.message;break;
     case "holy-water":case "key-use":case "coin-flip":case "wall-search":case "pouch-open":
       remember();node.props.objectState="on";node.props.message=data.action==="coin-flip"?(Math.random()>.5?"Cara":"Coroa"):"O objeto foi examinado.";break;
+    case "scratch-reveal":
+      remember();node.props.progress=100;node.props.revealed=true;message="Raspadinha revelada.";break;
     case "tree-state":
       remember();node.props.treeState=node.props.treeState==="locked"?"available":node.props.treeState==="available"?"solved":"locked";break;
     case "mummy-open":
