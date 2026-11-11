@@ -34,6 +34,13 @@ Cofres, maletas e rádios verificam valores configurados pelo mestre. As credenc
 - Modo OBS, com a interface escondida e somente o quadro visível.
 - Incorporação de links de vídeo do YouTube em cartões de evidência.
 
+- Barra contextual ao selecionar evidências: virar, ordenar camadas, adicionar pins, duplicar, excluir e enviar itens para mão/bolso.
+- Pins podem ser ocultados em conjunto; painéis laterais podem ser minimizados.
+- Pesquisa global de evidências no quadro.
+- Rolador de dados com expressões, vantagem/desvantagem e compartilhamento de resultados.
+- Anotações pessoais privadas por dispositivo; inventário de mão e bolso não altera o quadro compartilhado.
+- Interações por arraste entre objetos compatíveis: chave em fechadura, moeda na balança, água benta no espelho, ankh em portal e ervas no caldeirão.
+
 ### Colaboração
 - Múltiplos quadros/abas, com importação e exportação.
 - Persistência por metadados da cena do Owlbear, separando itens exclusivos do mestre dos dados públicos.
