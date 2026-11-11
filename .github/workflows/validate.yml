@@ -51,6 +51,12 @@ jobs:
           curl -fLsS -D /tmp/icon.headers "$(cat /tmp/icon-url)" -o /tmp/icon.svg
           grep -Eiq '^content-type: *text/html([; ]|$)' /tmp/popover.headers
           grep -Eiq '^content-type: *image/svg\+xml([; ]|$)' /tmp/icon.headers
+          echo "--- POPover response headers ---"
+          cat /tmp/popover.headers
+          echo "--- ICON response headers ---"
+          cat /tmp/icon.headers
+          echo "--- POPover document references ---"
+          grep -oE '(href|src)="[^"]+"' /tmp/popover.html | head -20
           grep -Eiq '<link rel="stylesheet" href="./style.css">' /tmp/popover.html
           grep -Eiq '<script type="module" src="./app.js"></script>' /tmp/popover.html
           echo "Popover HTML and icon are served with correct MIME types."
