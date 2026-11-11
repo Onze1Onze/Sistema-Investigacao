@@ -31,6 +31,7 @@ let sceneReady = false;
 let isGM = true;
 let canEdit = true;
 let currentTool = "select";
+let markMode = "free";
 let currentPanel = "properties";
 let selectedIds = [];
 let wireStart = null;
@@ -356,6 +357,12 @@ function addObject(type) {
   return addNode("object",{title:info.name,label:info.category,w:205,h:205,props:{objectType:type,objectState:"idle",activated:false,treeState:type==="tree"?"available":"locked"}});
 }
 function setTool(tool) {
+  if(tool==="mark" && currentTool==="mark") {
+    markMode=({free:"arrow",arrow:"circle",circle:"box",box:"line",line:"free"})[markMode]||"free";
+    const label=({free:"Marcar",arrow:"Seta",circle:"Círculo",box:"Retângulo",line:"Linha"})[markMode];
+    const btn=document.querySelector('[data-tool="mark"]');if(btn)btn.innerHTML='<span class="tool-icon">✎</span>'+label+'<small class="key">C</small>';
+    toast("Marcação: "+label.toLowerCase());return;
+  }
   currentTool = tool;
   wireStart = null;
   document.querySelectorAll("[data-tool]").forEach((button) => button.classList.toggle("active",button.dataset.tool === tool));
@@ -607,6 +614,8 @@ function renderHeader() {
   document.body.classList.toggle("torch-on",!!boardState.settings.torch);
   Object.entries(boardState.settings.effects).forEach(([key,value])=>document.body.classList.toggle("fx-"+key,!!value));
   document.body.classList.toggle("sanity-on",!!boardState.settings.sanity.enabled);
+  document.body.classList.toggle("transparent",boardState.surface==="transparent"||document.body.classList.contains("obs-mode"));
+  document.body.classList.toggle("player-view",!isGM);
   $("uv-toggle").checked=!!boardState.settings.uv;
   $("lamp-toggle").checked=!!boardState.settings.lamp;
   $("torch-toggle").checked=!!boardState.settings.torch;
@@ -904,10 +913,10 @@ function showOuija(node) {
     {label:"Cancelar",action:closeModal},
     {label:"Registrar no objeto",primary:true,action:()=>{const message=$("ouija-message").value;if(!isGM&&isOwlbear){sendMasterRequest("ouija-open",node.id,{message:message});closeModal();toast("Mensagem enviada ao mestre.");return;}remember();node.props.message=message;node.props.objectState="on";closeModal();renderAll();scheduleSave();}}
   ]);
-  $("modal-body").addEventListener("click",(e)=>{
+  $("modal-body").onclick=(e)=>{
     const letter=e.target.closest("[data-ouija-letter]");
     if(letter){$("ouija-message").value+=letter.dataset.ouijaLetter==="ADEUS"?" ":letter.dataset.ouijaLetter;}
-  });
+  };
 }
 function showScale(node) {
   const outcome=Math.random();
@@ -1149,13 +1158,13 @@ function bookEditor(node) {
       closeModal();renderAll();scheduleSave();toast("Página salva.");
     }}
   ]);
-  $("modal-body").addEventListener("click",(e)=>{
+  $("modal-body").onclick=(e)=>{
     const p=e.target.closest("[data-book-page]");
     if(p){const n=Number(p.dataset.bookPage);saveBookPageTemporary(node,index);node.props.page=n;bookEditor(node);}
     if(e.target.id==="book-prev"&&index>0){saveBookPageTemporary(node,index);node.props.page=index-1;bookEditor(node);}
     if(e.target.id==="book-next"){saveBookPageTemporary(node,index);if(index===pages.length-1){node.props.pages.push({title:"Página "+(pages.length+1),body:""});}node.props.page=Math.min(index+1,node.props.pages.length-1);bookEditor(node);}
     if(e.target.id==="book-tear"){saveBookPageTemporary(node,index);tearBookPage(node,index);closeModal();}
-  });
+  };
 }
 function saveBookPageTemporary(node,index) {
   const page=node.props.pages[index];if(!page)return;
@@ -1470,7 +1479,10 @@ function pointerUp() {
   if(pan){pan=null;document.body.classList.remove("panning");scheduleSave();}
   if(drawState) {
     if(drawState.kind==="mark" && drawState.points.length>1) {
-      remember();boardState.marks.push({id:uid("mark"),kind:"free",points:drawState.points,color:"#c32126",width:4});
+      remember();
+      const start=drawState.points[0],end=drawState.points[drawState.points.length-1];
+      if(markMode==="free")boardState.marks.push({id:uid("mark"),kind:"free",points:drawState.points,color:"#c32126",width:4});
+      else boardState.marks.push({id:uid("mark"),kind:markMode,x1:start.x,y1:start.y,x2:end.x,y2:end.y,points:[start,end],color:"#c32126",width:4});
       renderMarks();scheduleSave();
     } else if(drawState.kind==="fog") {
       const node=getNode(drawState.nodeId);
@@ -1627,6 +1639,22 @@ function inspectorClick(e) {
 }
 function inspectorInput(e) {
   const node=getSelected()[0];
+  if(e.target.dataset.fx) {
+    boardState.settings.effects[e.target.dataset.fx]=e.target.checked;
+    renderHeader();renderEffects();scheduleSave();return;
+  }
+  if(e.target.id==="light-mode") {
+    const mode=e.target.value;boardState.settings.light.mode=mode;
+    boardState.settings.uv=mode==="uv";boardState.settings.lamp=mode==="lamp"||mode==="room";boardState.settings.torch=mode==="torch";
+    renderHeader();renderEffects();scheduleSave();return;
+  }
+  if(e.target.id==="light-color") {boardState.settings.light.color=e.target.value;updateLight();scheduleSave();return;}
+  if(e.target.id==="light-intensity") {boardState.settings.light.intensity=Number(e.target.value);updateLight();scheduleSave();return;}
+  if(e.target.id==="light-radius") {boardState.settings.light.radius=Number(e.target.value);updateLight();scheduleSave();return;}
+  if(e.target.id==="sanity-enabled") {boardState.settings.sanity.enabled=e.target.checked;renderHeader();scheduleSave();return;}
+  if(e.target.id==="sanity-range") {boardState.settings.sanity.value=Number(e.target.value);renderHeader();scheduleSave();return;}
+  if(e.target.id==="audio-mute") {boardState.settings.audio.muted=e.target.checked;stopAmbient();scheduleSave();return;}
+  if(e.target.id==="ambience-select") {boardState.settings.audio.ambience=e.target.value;scheduleSave();return;}
   if(e.target.matches("[data-edit]")&&node) {
     node[e.target.dataset.edit]=e.target.value;
     const item=itemLayer.querySelector('[data-item="'+node.id+'"]');
@@ -1710,14 +1738,14 @@ function bindUI() {
   $("fit-board").addEventListener("click",frameBoard);
   $("more-board").addEventListener("click",()=>{
     openModal("Mais ferramentas",'<div class="catalog-grid"><button class="catalog-card" data-more="import-library"><span class="art">▧</span><span><b>Biblioteca Owlbear</b><small>Importar imagens da biblioteca da sala.</small></span></button><button class="catalog-card" data-more="audio"><span class="art">♫</span><span><b>Adicionar áudio</b><small>Inserir gravação no dossiê.</small></span></button><button class="catalog-card" data-more="help"><span class="art">?</span><span><b>Ajuda</b><small>Atalhos e manual de campo.</small></span></button><button class="catalog-card" data-more="new"><span class="art">＋</span><span><b>Novo caso</b><small>Criar um quadro separado.</small></span></button></div>',[{label:"Fechar",action:closeModal}]);
-    $("modal-body").addEventListener("click",(e)=>{
+    $("modal-body").onclick=(e)=>{
       const b=e.target.closest("[data-more]");if(!b)return;
       const act=b.dataset.more;closeModal();
       if(act==="import-library")importOwlbearImages();
       if(act==="audio")$("audio-input").click();
       if(act==="help")showHelp();
       if(act==="new")createBoardEntry();
-    });
+    };
   });
   $("undo-btn").addEventListener("click",undo);
   $("redo-btn").addEventListener("click",redo);
