@@ -407,24 +407,6 @@ function renderWires() {
   }
   wireLayer.innerHTML=html.join("");
 }
-function itemClasses(node) {
-  const classes=["item"];
-  if (selectedIds.includes(node.id)) classes.push("selected");
-  if (node.type==="document" || node.type==="pdf" || node.type==="leaf") classes.push("paper");
-  if (node.type==="note") classes.push(node.props.noteStyle==="ficha"?"note-ficha":node.props.noteStyle==="free"?"note-free":"note-postit");
-  if (node.type==="image") classes.push("image-node");
-  if (node.type==="map") classes.push("map-node");
-  if (node.type==="object") {
-    classes.push("object-node");
-    if (node.props.objectType==="vampireMirror" || node.props.objectType==="mirror") classes.push("object-vampire");
-    if (node.props.objectType==="tree") classes.push("tree-"+(node.props.treeState||"locked"));
-  }
-  if (node.type==="tape") classes.push("tape-node");
-  if (node.type==="gmOnly") classes.push("gm-hidden");
-  if (node.uvSecret) classes.push("uv-hidden");
-  if (node.locked) classes.push("locked");
-  return classes.join(" ");
-}
 function objectInside(node) {
   const type=node.props.objectType || "object";
   const info=objectInfo(type);
@@ -650,20 +632,7 @@ function selectNode(id,add=false) {
   } else selectedIds=[id];
   syncSelectionClass();
 }
-function setPanel(panel) {
-  currentPanel=panel;
-  document.querySelectorAll("[data-panel]").forEach((button)=>button.classList.toggle("active",button.dataset.panel===panel));
-  renderInspector();
-}
 function field(label,html) { return '<div class="field"><label>'+label+'</label>'+html+'</div>'; }
-function renderInspector() {
-  document.querySelectorAll("[data-panel]").forEach((button)=>button.classList.toggle("active",button.dataset.panel===currentPanel));
-  if (currentPanel==="catalog") return renderCatalog();
-  if (currentPanel==="effects") return renderEffectsPanel();
-  if (currentPanel==="boards") return renderBoardsPanel();
-  if (currentPanel==="share") return renderSharePanel();
-  return renderProperties();
-}
 function renderProperties() {
   const nodes=getSelected();
   inspectorTitle.textContent=nodes.length===1?"Detalhes da evidência":nodes.length>1?"Seleção múltipla":"Central de investigação";
