@@ -6,11 +6,13 @@ Extensão para montar um mural investigativo colaborativo dentro do Owlbear Rode
 
 1. Abra a página de extensões do seu perfil no Owlbear Rodeo.
 2. Escolha **Adicionar extensão** e depois **Adicionar extensão personalizada**.
-3. Cole o endereço do manifesto:
+3. Cole o manifesto publicado em:
 
-   https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@main/manifest.json
+   https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/1768c5ebddd19166131b5b0f18900d8d7c400b9f/manifest.json
 
 4. Adicione a extensão à sala e abra o ícone **Quadro Investigativo** no canto superior.
+
+**Importante:** a interface HTML é servida por rawcdn.githack.com, não pelo jsDelivr. O jsDelivr entrega arquivos .html com `Content-Type: text/plain`, o que faz o navegador exibir o código como texto em vez de interpretar a página. O manifesto aponta para uma revisão imutável da interface servida com `Content-Type: text/html`.
 
 ## Funcionalidades incluídas
 
@@ -30,19 +32,19 @@ Extensão para montar um mural investigativo colaborativo dentro do Owlbear Rode
 
 A extensão usa o SDK oficial `@owlbear-rodeo/sdk@3.1.0` carregado como módulo ESM. A interface é servida como HTML/CSS/JavaScript sem etapa de build. O manifesto segue o formato de extensão documentado pelo Owlbear Rodeo (`manifest_version: 1`).
 
-Os dados compartilhados são gravados em `OBR.scene.setMetadata` com chave namespaced `com.onze1onze.sistemainvestigacao/board`. O armazenamento de metadados da sala não é usado para o quadro, porque a documentação oficial limita esse espaço a 16 KB.
+Os dados compartilhados são gravados em `OBR.scene.setMetadata` com chave namespaced `com.onze1onze.sistemainvestigacao/board`. O armazenamento de metadados da sala não é usado para o quadro, porque esse espaço é limitado. A colaboração exige uma cena aberta.
 
 As imagens selecionadas são redimensionadas e recomprimidas antes de entrar no estado da mesa. PDFs e áudios grandes são recusados para evitar criar metadados excessivamente pesados; use arquivos compactados ou links externos nesses casos. O suporte a arquivos é limitado ao conteúdo que o browser consegue ler.
 
 O botão de tela cheia tenta usar a Fullscreen API do navegador. O Owlbear controla o tamanho externo do popover, então o navegador pode limitar a expansão à área que o host permitir.
 
-## Observação sobre a referência visual
+## Referência visual
 
 O quadro Hips & Hops foi analisado pela interface pública renderizada e seus controles visíveis. O código-fonte interno do site não estava exposto como repositório ou arquivo público acessível no endereço consultado; esta extensão é uma implementação independente das funcionalidades observáveis, não uma cópia do código proprietário.
 
 ## Desenvolvimento
 
-Não há dependências de build. Para servir localmente, use qualquer servidor estático e instale no Owlbear o manifesto local apontado pelo servidor. O SDK é importado do CDN ESM durante a execução.
+Não há dependências de build. Para servir localmente, use qualquer servidor estático que responda HTML com `Content-Type: text/html` e instale no Owlbear o manifesto apontado pelo servidor. O SDK é importado do CDN ESM durante a execução.
 
 ## Licença
 
