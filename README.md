@@ -1,51 +1,70 @@
-# Quadro Investigativo — Owlbear Rodeo
+# Quadro Investigativo · Owlbear Rodeo
 
-Extensão para montar um mural investigativo colaborativo dentro do Owlbear Rodeo.
+Extensão de mesa investigativa para campanhas de RPG. O quadro é uma aplicação própria construída a partir da interface e dos estilos fornecidos como referência.
 
 ## Instalação
 
-1. Abra a página de extensões do seu perfil no Owlbear Rodeo.
-2. Escolha **Adicionar extensão** e depois **Adicionar extensão personalizada**.
-3. Cole o manifesto publicado em:
+Adicione o endereço do manifesto como extensão personalizada no Owlbear Rodeo:
 
-   https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/1768c5ebddd19166131b5b0f18900d8d7c400b9f/manifest.json
+**https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/main/manifest.json**
 
-4. Adicione a extensão à sala e abra o ícone **Quadro Investigativo** no canto superior.
+O manifesto aponta para uma revisão imutável da interface e dos arquivos estáticos. A página HTML é entregue com `Content-Type: text/html`; não usar jsDelivr para servir `index.html`, pois esse CDN pode entregá-lo como texto simples.
 
-**Importante:** a interface HTML é servida por rawcdn.githack.com, não pelo jsDelivr. O jsDelivr entrega arquivos .html com `Content-Type: text/plain`, o que faz o navegador exibir o código como texto em vez de interpretar a página. O manifesto aponta para uma revisão imutável da interface servida com `Content-Type: text/html`.
+## Funcionalidades implementadas
 
-## Funcionalidades incluídas
+### Mesa e edição
+- Área de trabalho ampla com pan, zoom, enquadramento e minimapa.
+- Seleção múltipla, movimentação de itens, inércia, colisão/repulsão simples, rotação e redimensionamento.
+- Pins em itens e conexões curvas por fios; marcações livres, setas, círculos, caixas e linhas.
+- Documentos, folhas, post-its, fichas, imagens, mapas, PDFs, áudios, vídeos e fitas adesivas.
+- Raspadinhas e segredos reveláveis por luz negra.
+- Cadernos com páginas, colagens de imagem e extração de folhas.
+- Desfazer/refazer, duplicar, ordenar camadas, exportar PNG, exportar/importar JSON e backup de mestre.
 
-- Mesa ampla com pan, zoom, enquadramento e minimapa.
-- Cartões para documentos, notas, objetos, imagens, PDFs e gravações de áudio.
-- Upload por seletor de arquivos ou arrastar e soltar.
-- Pins em documentos e objetos; fios conectáveis entre dois pins.
-- Arraste com inércia, curvas elásticas nos fios e repulsão simples entre cartões.
-- Edição de título, descrição e rótulo; duplicar e remover evidências.
-- Histórico de desfazer/refazer.
-- Luz ambiente, luminária, lanterna de cursor, luz negra e escurecimento.
-- Registro de frequências, fitas e objetos especiais.
-- Importação/exportação do quadro em JSON.
-- Persistência local fora do Owlbear e sincronização via metadados da cena quando há uma cena aberta.
+### Biblioteca de objetos e enigmas
+A biblioteca inclui cofres, maletas com senha, rádio de emergência, bola de cristal, tarô, balança de Anúbis, Ouija, caixa de música, pêndulo, medidor EMF, termômetro, vela, incenso, caldeirão, crânio falante, espelhos, água benta, relógios, ampulheta, timer, VHS, TV, portal, máscara, fogo-fátuo, gato, ankh, discos de hieróglifos, parede de tijolos, saquinho de ervas, ativadores, árvore de pistas, múmia, mesa de luz e bandeja/temporizador de revelação.
 
-## Arquitetura e compatibilidade
+Cofres, maletas e rádios verificam valores configurados pelo mestre. As credenciais ficam no armazenamento privado local do mestre; a sala recebe apenas hashes de verificação. Quando um jogador tenta resolver um mecanismo, a tentativa é enviada pelo canal de transmissão do Owlbear e o mestre valida e publica o resultado na cena.
 
-A extensão usa o SDK oficial `@owlbear-rodeo/sdk@3.1.0` carregado como módulo ESM. A interface é servida como HTML/CSS/JavaScript sem etapa de build. O manifesto segue o formato de extensão documentado pelo Owlbear Rodeo (`manifest_version: 1`).
+### Atmosfera e apresentação
+- Luz ambiente, luminária, lanterna, luz negra e revelação de texto secreto.
+- Névoa, cinzas, teias, morcegos, Lua de Sangue, olhos no escuro, fogo-fátuo, máscara, chuva, neve, brasas, ectoplasma e fumaça.
+- Barra de sanidade, volumes de áudio e ambientes sonoros gerados no navegador.
+- Texturas de madeira, cortiça, feltro, mesa escura e fundo transparente.
+- Modo OBS, com a interface escondida e somente o quadro visível.
+- Incorporação de links de vídeo do YouTube em cartões de evidência.
 
-Os dados compartilhados são gravados em `OBR.scene.setMetadata` com chave namespaced `com.onze1onze.sistemainvestigacao/board`. O armazenamento de metadados da sala não é usado para o quadro, porque esse espaço é limitado. A colaboração exige uma cena aberta.
+### Colaboração
+- Múltiplos quadros/abas, com importação e exportação.
+- Persistência por metadados da cena do Owlbear, separando itens exclusivos do mestre dos dados públicos.
+- Cor e nome do jogador, além da preferência de sincronização de visão.
+- Jogadores podem interagir com mecanismos sem receber as senhas em texto aberto.
 
-As imagens selecionadas são redimensionadas e recomprimidas antes de entrar no estado da mesa. PDFs e áudios grandes são recusados para evitar criar metadados excessivamente pesados; use arquivos compactados ou links externos nesses casos. O suporte a arquivos é limitado ao conteúdo que o browser consegue ler.
+## Arquivos
 
-O botão de tela cheia tenta usar a Fullscreen API do navegador. O Owlbear controla o tamanho externo do popover, então o navegador pode limitar a expansão à área que o host permitir.
+- `manifest.json`: entrada da extensão.
+- `index.html`: estrutura da interface.
+- `style.css`: tema Arquivo de Campo e estilos responsivos.
+- `app.js`: estado, edição, objetos, enigmas, efeitos, importação/exportação e integração com o SDK.
+- `icon.svg`: ícone da extensão.
+- `.github/workflows/validate.yml`: validação de sintaxe e disponibilidade dos arquivos publicados.
 
-## Referência visual
+## Sobre os arquivos de referência enviados
 
-O quadro Hips & Hops foi analisado pela interface pública renderizada e seus controles visíveis. O código-fonte interno do site não estava exposto como repositório ou arquivo público acessível no endereço consultado; esta extensão é uma implementação independente das funcionalidades observáveis, não uma cópia do código proprietário.
+O pacote enviado continha o HTML, quatro folhas CSS (base e três camadas Halloween) e fontes WOFF2. O HTML referenciava cinco módulos JavaScript externos — `base.js`, `Halloween2026-1.js`, `Halloween2026-2.js`, `Halloween2026-3.js` e `base-fim.js` — que não vieram anexados. Por isso, a implementação do comportamento foi reconstruída em `app.js` a partir dos elementos e recursos identificáveis no HTML/CSS, sem copiar o JavaScript ausente. A nova interface utiliza famílias tipográficas equivalentes do Google Fonts; os arquivos WOFF2 originais foram inventariados, mas não incorporados como binários neste repositório.
+
+## Limites conhecidos
+
+- A física é de interface (inércia e repulsão simples), não um motor físico completo.
+- A névoa desenhada nos mapas é uma camada do quadro investigativo, independente do sistema nativo de Fog do Owlbear.
+- Os ambientes sonoros são sintetizados pelo navegador; não acompanham a biblioteca de áudios do projeto original.
+- O estado compartilhado utiliza metadados da cena. Imagens são comprimidas antes de entrar no estado; arquivos muito grandes devem ser reduzidos ou ligados por URL.
+- O teste automatizado verifica a sintaxe e a entrega dos arquivos públicos. A validação final de experiência deve ser feita numa sala real do Owlbear com mestre e jogadores.
 
 ## Desenvolvimento
 
-Não há dependências de build. Para servir localmente, use qualquer servidor estático que responda HTML com `Content-Type: text/html` e instale no Owlbear o manifesto apontado pelo servidor. O SDK é importado do CDN ESM durante a execução.
+Aplicação estática sem etapa de build. O módulo importa `@owlbear-rodeo/sdk@3.1.0` como ESM. O GitHub Actions verifica o JSON do manifesto, a sintaxe do módulo, a resposta HTTP e os arquivos CSS/JS publicados.
 
-## Licença
+## Licenças
 
-Este repositório contém implementação original. O SDK do Owlbear Rodeo é distribuído separadamente sob sua própria licença MIT.
+A implementação deste repositório é própria. O SDK do Owlbear Rodeo mantém sua licença original. As famílias de fontes carregadas remotamente permanecem sob as respectivas licenças dos fornecedores.
