@@ -663,6 +663,8 @@ function selectNode(id,add=false) {
     selectedIds=selectedIds.includes(id)?selectedIds.filter((x)=>x!==id):selectedIds.concat(id);
   } else selectedIds=[id];
   syncSelectionClass();
+  const quick=$("quick-actions");
+  if(quick)quick.hidden=!selectedIds.some((x)=>getNode(x))||document.body.classList.contains("obs-mode");
 }
 function field(label,html) { return '<div class="field"><label>'+label+'</label>'+html+'</div>'; }
 function renderProperties() {
@@ -1782,13 +1784,21 @@ function bindUI() {
   $("zoom-out").addEventListener("click",()=>zoomAt(viewport.clientWidth/2,viewport.clientHeight/2,1/1.15));
   $("fit-board").addEventListener("click",frameBoard);
   $("more-board").addEventListener("click",()=>{
-    openModal("Mais ferramentas",'<div class="catalog-grid"><button class="catalog-card" data-more="import-library"><span class="art">▧</span><span><b>Biblioteca Owlbear</b><small>Importar imagens da biblioteca da sala.</small></span></button><button class="catalog-card" data-more="audio"><span class="art">♫</span><span><b>Adicionar áudio</b><small>Inserir gravação no dossiê.</small></span></button><button class="catalog-card" data-more="video"><span class="art">▶</span><span><b>Vídeo / YouTube</b><small>Incorporar vídeo como evidência.</small></span></button><button class="catalog-card" data-more="help"><span class="art">?</span><span><b>Ajuda</b><small>Atalhos e manual de campo.</small></span></button><button class="catalog-card" data-more="new"><span class="art">＋</span><span><b>Novo caso</b><small>Criar um quadro separado.</small></span></button></div>',[{label:"Fechar",action:closeModal}]);
+    openModal("Ferramentas do arquivo",'<div class="catalog-grid"><button class="catalog-card" data-more="import-library"><span class="art">▧</span><span><b>Biblioteca Owlbear</b><small>Importar imagens da biblioteca da sala.</small></span></button><button class="catalog-card" data-more="audio"><span class="art">♫</span><span><b>Adicionar áudio</b><small>Inserir gravação no dossiê.</small></span></button><button class="catalog-card" data-more="video"><span class="art">▶</span><span><b>Vídeo / YouTube</b><small>Incorporar vídeo como evidência.</small></span></button><button class="catalog-card" data-more="dice"><span class="art">🎲</span><span><b>Dados e rolagens</b><small>Rolador de dados de RPG.</small></span></button><button class="catalog-card" data-more="search"><span class="art">⌕</span><span><b>Buscar evidência</b><small>Pesquisar itens deste quadro.</small></span></button><button class="catalog-card" data-more="notes"><span class="art">✎</span><span><b>Anotações minhas</b><small>Notas privadas neste dispositivo.</small></span></button><button class="catalog-card" data-more="hand"><span class="art">✋</span><span><b>Itens na mão</b><small>Consultar itens em sua mão.</small></span></button><button class="catalog-card" data-more="pocket"><span class="art">▣</span><span><b>Bolso</b><small>Guardar e recuperar evidências.</small></span></button><button class="catalog-card" data-more="panels"><span class="art">☷</span><span><b>Painéis</b><small>Mostrar ou esconder ferramentas e propriedades.</small></span></button><button class="catalog-card" data-more="pins"><span class="art">📍</span><span><b>Visibilidade dos pins</b><small>Mostrar ou esconder os alfinetes.</small></span></button><button class="catalog-card" data-more="about"><span class="art">ⓘ</span><span><b>Sobre o quadro</b><small>Versão, créditos e ajuda.</small></span></button><button class="catalog-card" data-more="help"><span class="art">?</span><span><b>Atalhos</b><small>Manual de campo.</small></span></button><button class="catalog-card" data-more="new"><span class="art">＋</span><span><b>Novo caso</b><small>Criar um quadro separado.</small></span></button></div>',[{label:"Fechar",action:closeModal}]);
     $("modal-body").onclick=(e)=>{
       const b=e.target.closest("[data-more]");if(!b)return;
       const act=b.dataset.more;closeModal();
       if(act==="import-library")importOwlbearImages();
       if(act==="audio")$("audio-input").click();
       if(act==="video")addVideoFromUrl();
+      if(act==="dice")openDiceRoller();
+      if(act==="search")openSearch();
+      if(act==="notes")openPersonalNotes();
+      if(act==="hand")openHand();
+      if(act==="pocket")openPocket();
+      if(act==="panels")openPanelManager();
+      if(act==="pins"){boardState.settings.pinsVisible=!boardState.settings.pinsVisible;renderAll();scheduleSave();}
+      if(act==="about")openAbout();
       if(act==="help")showHelp();
       if(act==="new")createBoardEntry();
     };
@@ -2117,4 +2127,142 @@ function addVideoFromUrl() {
       closeModal();addNode("video",{title:"Vídeo de evidência",src:src,filename:"YOUTUBE",w:380,h:270});
     }}
   ]);
+}
+
+
+function savePrivateCollections() {
+  privateData.handIds=Array.from(new Set(privateData.handIds||[])).filter((id)=>!!getNode(id));
+  privateData.pocketIds=Array.from(new Set(privateData.pocketIds||[])).filter((id)=>!!getNode(id));
+  persistPrivate();
+}
+function addToHand(node) {
+  if(!node)return;
+  privateData.handIds=privateData.handIds||[];
+  if(!privateData.handIds.includes(node.id))privateData.handIds.push(node.id);
+  privateData.pocketIds=(privateData.pocketIds||[]).filter((id)=>id!==node.id);
+  savePrivateCollections();renderItems();selectedIds=[node.id];renderHeader();toast("Evidência colocada na mão.");
+}
+function putInPocket(node) {
+  if(!node)return;
+  privateData.pocketIds=privateData.pocketIds||[];
+  if(!privateData.pocketIds.includes(node.id))privateData.pocketIds.push(node.id);
+  privateData.handIds=(privateData.handIds||[]).filter((id)=>id!==node.id);
+  savePrivateCollections();selectedIds=[];renderAll();toast("Evidência guardada no bolso. Ela fica oculta apenas neste dispositivo.");
+}
+function removeFromHand(id,focus=true) {
+  privateData.handIds=(privateData.handIds||[]).filter((itemId)=>itemId!==id);
+  savePrivateCollections();renderAll();
+  if(focus)focusNode(id);
+}
+function takeFromPocket(id) {
+  privateData.pocketIds=(privateData.pocketIds||[]).filter((itemId)=>itemId!==id);
+  savePrivateCollections();renderAll();focusNode(id);
+  toast("Evidência devolvida à mesa.");
+}
+function focusNode(id) {
+  const node=getNode(id);if(!node)return;
+  selectedIds=[id];
+  tx=viewport.clientWidth/2-(node.x+node.w/2)*zoom;
+  ty=viewport.clientHeight/2-(node.y+node.h/2)*zoom;
+  updateTransform();renderItems();renderHeader();renderInspector();
+  inspector.classList.add("open");
+}
+function openHand() {
+  const ids=privateData.handIds||[];
+  const nodes=ids.map(getNode).filter(Boolean);
+  const html=nodes.length?'<div class="hand-grid">'+nodes.map((node)=>'<div class="hand-card"><span class="art">'+(node.type==="object"?objectInfo(node.props.objectType).icon:node.type==="image"?"▧":"▤")+'</span><span><b>'+esc(node.title)+'</b><small>'+esc(node.type)+'</small></span><button class="btn" data-hand-return="'+esc(node.id)+'">Soltar</button><button class="btn danger" data-hand-pocket="'+esc(node.id)+'">Bolso</button></div>').join("")+'</div>':'<div class="empty-state">Sua mão está vazia.<br>Selecione uma evidência e use o botão “Mão” na barra de ações rápidas.</div>';
+  openModal("Itens na mão",html,[{label:"Fechar",primary:true,action:closeModal}]);
+  $("modal-body").onclick=(e)=>{
+    const back=e.target.closest("[data-hand-return]"),pocket=e.target.closest("[data-hand-pocket]");
+    if(back){removeFromHand(back.dataset.handReturn,false);openHand();}
+    if(pocket){const node=getNode(pocket.dataset.handPocket);putInPocket(node);openHand();}
+  };
+}
+function openPocket() {
+  const ids=privateData.pocketIds||[];
+  const nodes=ids.map(getNode).filter(Boolean);
+  const html=nodes.length?'<div class="pocket-grid">'+nodes.map((node)=>'<button class="pocket-card" data-pocket-take="'+esc(node.id)+'"><span class="art">'+(node.type==="object"?objectInfo(node.props.objectType).icon:node.type==="image"?"▧":"▤")+'</span><span><b>'+esc(node.title)+'</b><small>Clique para devolver à mesa</small></span></button>').join("")+'</div>':'<div class="empty-state">Seu bolso está vazio.<br>Use “Bolso” na barra de ações rápidas para guardar uma evidência sem apagá-la.</div>';
+  openModal("Bolso de evidências",html,[{label:"Fechar",primary:true,action:closeModal}]);
+  $("modal-body").onclick=(e)=>{
+    const btn=e.target.closest("[data-pocket-take]");
+    if(btn){takeFromPocket(btn.dataset.pocketTake);openPocket();}
+  };
+}
+function openPersonalNotes() {
+  const key="notes";
+  const value=String(privateData[key]||"");
+  openModal("Anotações pessoais",'<p>Este bloco é privado neste navegador. Não é enviado aos outros jogadores nem anexado à cena.</p><textarea id="personal-notes" class="private-notes" placeholder="Escreva suas hipóteses, lembretes e conexões...">'+esc(value)+'</textarea>',[
+    {label:"Fechar",action:()=>{privateData[key]=$("personal-notes").value;persistPrivate();closeModal();}},
+    {label:"Salvar",primary:true,action:()=>{privateData[key]=$("personal-notes").value;persistPrivate();closeModal();toast("Anotações pessoais salvas.");}}
+  ]);
+}
+function openPanelManager() {
+  openModal("Painéis da mesa",'<div class="field"><label><input id="panel-tools-check" type="checkbox" '+(!document.body.classList.contains("tools-hidden")?"checked":"")+'> Mostrar ferramentas laterais</label></div><div class="field"><label><input id="panel-inspector-check" type="checkbox" '+(!document.body.classList.contains("inspector-hidden")?"checked":"")+'> Mostrar painel de propriedades</label></div><div class="field"><label><input id="panel-minimap-check" type="checkbox" '+(minimapVisible?"checked":"")+'> Mostrar minimapa</label></div><div class="field"><label><input id="panel-pins-check" type="checkbox" '+(boardState.settings.pinsVisible?"checked":"")+'> Mostrar pins e alfinetes</label></div>',[
+    {label:"Fechar",primary:true,action:closeModal}
+  ]);
+  $("modal-body").onchange=(e)=>{
+    if(e.target.id==="panel-tools-check")document.body.classList.toggle("tools-hidden",!e.target.checked);
+    if(e.target.id==="panel-inspector-check")document.body.classList.toggle("inspector-hidden",!e.target.checked);
+    if(e.target.id==="panel-minimap-check"){minimapVisible=e.target.checked;renderMinimap();$("minimap").hidden=!minimapVisible;}
+    if(e.target.id==="panel-pins-check"){boardState.settings.pinsVisible=e.target.checked;renderItems();scheduleSave();}
+  };
+}
+function openAbout() {
+  openModal("Quadro Investigativo",'<div style="text-align:center;color:#d6b56d;font:32px var(--serif);margin:8px">✦ SAI ✦</div><p><strong>Arquivo de Campo · versão 1.2.1</strong></p><p>Uma mesa investigativa para organizar documentos, objetos, enigmas, fios condutores, mapas, sons e pistas de campanhas de RPG.</p><p>Desenvolvimento: Onze1Onze<br>Integração: Owlbear Rodeo SDK 3.1.0</p><p class="help">A interface foi reconstruída com base nos HTML e CSS de referência fornecidos. Os cinco scripts JavaScript originais não estavam nos anexos, então as interações foram reimplementadas de forma independente.</p><div class="panel-actions"><a class="btn" href="https://github.com/Onze1Onze/Sistema-Investigacao" target="_blank" rel="noopener">Repositório</a></div>',[{label:"Fechar",primary:true,action:closeModal}]);
+}
+function openSearch() {
+  openModal("Buscar evidência",'<div class="field"><label>Nome, descrição ou identificação</label><input id="board-search" placeholder="Digite para pesquisar..."></div><div id="board-search-results" class="search-results"><div class="empty-state">Digite para localizar itens, documentos, mapas e objetos.</div></div>',[{label:"Fechar",primary:true,action:closeModal}]);
+  $("board-search").addEventListener("input",()=>{
+    const q=$("board-search").value.trim().toLowerCase();
+    const results=boardState.nodes.filter((node)=>(isGM||!node.gmOnly)&&!(privateData.pocketIds||[]).includes(node.id)&&[node.title,node.label,node.body,node.filename,node.props.message].some((v)=>String(v||"").toLowerCase().includes(q))).slice(0,80);
+    $("board-search-results").innerHTML=results.length?results.map((node)=>'<button class="search-result" data-search-item="'+esc(node.id)+'"><span class="art">'+(node.type==="object"?objectInfo(node.props.objectType).icon:node.type==="image"?"▧":node.type==="map"?"◫":"▤")+'</span><span><b>'+esc(node.title)+'</b><small>'+esc(node.label||node.type)+' · '+esc(node.filename||"Evidência")+'</small></span></button>').join(""):'<div class="empty-state">Nenhuma evidência encontrada.</div>';
+  });
+  $("modal-body").onclick=(e)=>{
+    const btn=e.target.closest("[data-search-item]");
+    if(btn){const id=btn.dataset.searchItem;closeModal();focusNode(id);}
+  };
+}
+function parseDiceExpression(expression) {
+  const match=String(expression||"").trim().toLowerCase().match(/^(\d*)d(\d+)(?:\s*([+-])\s*(\d+))?$/);
+  if(!match)throw new Error("Use uma expressão como 1d20+5 ou 3d6.");
+  const count=Number(match[1]||1),sides=Number(match[2]),modifier=Number(match[4]||0)*(match[3]==="-"?-1:1);
+  if(count<1||count>50||sides<2||sides>1000||Math.abs(modifier)>10000)throw new Error("Limites: até 50 dados, de 2 a 1000 lados e modificador até 10000.");
+  const rolls=Array.from({length:count},()=>Math.floor(Math.random()*sides)+1);
+  return {expression:expression,rolls:rolls,modifier:modifier,total:rolls.reduce((a,b)=>a+b,0)+modifier,sides:sides};
+}
+function drawDiceResult(result) {
+  openModal("Resultado da rolagem",'<div class="help" style="text-align:center">'+esc(result.expression)+'</div><div class="dice-output">'+result.rolls.map((n)=>'<div class="dice-result '+(n===result.sides?"critical":n===1?"fumble":"")+'">'+n+'</div>').join("")+'</div><div style="text-align:center;font:700 24px var(--serif);color:#f0d9a6">Total: '+result.total+'</div><p style="text-align:center;color:#b99d72;font:11px var(--ui)">'+result.rolls.length+' dado(s) de '+result.sides+' lados'+(result.modifier?" · modificador "+(result.modifier>0?"+":"")+result.modifier:"")+'</p>',[
+    {label:"Fechar",action:closeModal},
+    {label:"Compartilhar na sala",primary:true,action:()=>{
+      if(OBR_API&&sceneReady)OBR_API.broadcast.sendMessage(BROADCAST_CHANNEL,{kind:"qi-dice",name:roleName,result:result}).catch(()=>{});
+      closeModal();toast("Resultado enviado aos jogadores.");
+    }}
+  ]);
+}
+function openDiceRoller() {
+  openModal("Rolador de dados",'<p>Escolha um dado ou digite uma expressão de RPG.</p><div class="dice-menu">'+[4,6,8,10,12,20,100].map((s)=>'<button class="dice-face" data-dice-sides="'+s+'">d'+s+'</button>').join("")+'</div><div class="field"><label>Expressão</label><input id="dice-expression" value="1d20+0" placeholder="2d6+3"></div><div class="field"><label>Quantidade de dados</label><input id="dice-count" type="number" min="1" max="50" value="1"></div><div class="panel-actions"><button class="btn" id="dice-advantage">Vantagem (2d20)</button><button class="btn" id="dice-disadvantage">Desvantagem (2d20)</button></div>',[
+    {label:"Fechar",action:closeModal},
+    {label:"Rolar",primary:true,action:()=>{
+      try{const result=parseDiceExpression($("dice-expression").value);closeModal();drawDiceResult(result);}
+      catch(error){toast(error.message);}
+    }}
+  ]);
+  $("modal-body").onclick=(e)=>{
+    const die=e.target.closest("[data-dice-sides]");
+    if(die){$("dice-expression").value=($("dice-count").value||1)+"d"+die.dataset.diceSides+"+0";}
+    if(e.target.id==="dice-advantage")$("dice-expression").value="2d20";
+    if(e.target.id==="dice-disadvantage")$("dice-expression").value="2d20";
+  };
+}
+function quickAction(action) {
+  const node=getSelected()[0];
+  if(!node)return;
+  if(action==="flip")return flipSelected();
+  if(action==="front")return setLayer("front");
+  if(action==="back")return setLayer("back");
+  if(action==="pin")return addPin(node);
+  if(action==="hand")return addToHand(node);
+  if(action==="pocket")return putInPocket(node);
+  if(action==="duplicate")return duplicateSelected();
+  if(action==="delete")return deleteSelected();
 }
