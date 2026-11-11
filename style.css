@@ -345,3 +345,18 @@ body.player-view .gm-only-control{display:none!important}
 .search-result b{display:block;font:700 11px var(--ui)}
 .search-result small{display:block;font-size:9px;color:#ae9874}
 @media(max-width:760px){.quick-actions{bottom:7px;left:50%;width:calc(100% - 12px);gap:3px}.quick-actions button{padding:6px 7px;font-size:9px}.hand-grid,.pocket-grid{grid-template-columns:1fr}}
+
+
+/* Cofre com discos rotativos acessíveis por arrasto, roda e teclado */
+.safe-dials{display:flex;align-items:center;justify-content:center;gap:clamp(8px,3vw,20px);margin:18px auto 15px}
+.safe-wheel{width:clamp(74px,16vw,104px);display:flex;flex-direction:column;align-items:center;gap:5px;touch-action:none;user-select:none}
+.safe-wheel>button{width:34px;height:27px;border:1px solid #987344;background:#38261a;color:#f0d9a7;border-radius:3px;font:700 15px var(--ui);padding:0}
+.safe-wheel>button:hover{background:#70472a}
+.safe-face{width:100%;aspect-ratio:1;border-radius:50%;border:5px double #927143;background:radial-gradient(circle,#d9c28f 0 37%,#6d502f 38% 43%,#24170f 44% 100%);box-shadow:inset 0 0 0 3px #1e130c,0 5px 12px #000a;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#2b1b10;position:relative;cursor:ns-resize}
+.safe-face:before{content:"";position:absolute;inset:8%;border-radius:50%;border:1px dashed #88683d;transform:rotate(var(--dial-angle,0deg))}
+.safe-face .safe-prev,.safe-face .safe-next{font:700 12px var(--typewriter);opacity:.35}
+.safe-face .safe-digit{font:700 clamp(25px,5vw,34px) var(--typewriter);line-height:1;color:#23150d;text-shadow:0 1px #f3e6bb}
+body.tools-hidden .workspace{grid-template-columns:minmax(0,1fr) var(--inspector-width)}
+body.inspector-hidden .workspace{grid-template-columns:var(--rail-width) minmax(0,1fr)}
+body.tools-hidden.inspector-hidden .workspace{grid-template-columns:minmax(0,1fr)}
+@media(max-width:820px){body.tools-hidden .workspace{grid-template-columns:minmax(0,1fr)}body.inspector-hidden .workspace{grid-template-columns:var(--rail-width) minmax(0,1fr)}}
