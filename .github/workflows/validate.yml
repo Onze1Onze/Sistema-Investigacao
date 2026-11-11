@@ -55,8 +55,11 @@ jobs:
           cat /tmp/icon.headers
           grep -Eiq '^content-type: *text/html([; ]|$)' /tmp/popover.headers
           grep -Eiq '^content-type: *image/svg\+xml([; ]|$)' /tmp/icon.headers
+          echo "--- POPover body preview ---"
+          head -c 1200 /tmp/popover.html
+          echo
           echo "--- POPover document references ---"
-          grep -oE '(href|src)="[^"]+"' /tmp/popover.html | head -20
+          grep -oE '(href|src)="[^"]+"' /tmp/popover.html | head -20 || true
           grep -Eiq '<link rel="stylesheet" href="./style.css">' /tmp/popover.html
           grep -Eiq '<script type="module" src="./app.js"></script>' /tmp/popover.html
           echo "Popover HTML and icon are served with correct MIME types."
