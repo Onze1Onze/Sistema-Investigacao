@@ -2247,18 +2247,33 @@ function drawDiceResult(result) {
   ]);
 }
 function openDiceRoller() {
-  openModal("Rolador de dados",'<p>Escolha um dado ou digite uma expressão de RPG.</p><div class="dice-menu">'+[4,6,8,10,12,20,100].map((s)=>'<button class="dice-face" data-dice-sides="'+s+'">d'+s+'</button>').join("")+'</div><div class="field"><label>Expressão</label><input id="dice-expression" value="1d20+0" placeholder="2d6+3"></div><div class="field"><label>Quantidade de dados</label><input id="dice-count" type="number" min="1" max="50" value="1"></div><div class="panel-actions"><button class="btn" id="dice-advantage">Vantagem (2d20)</button><button class="btn" id="dice-disadvantage">Desvantagem (2d20)</button></div>',[
+  let mode="normal",lastSides=20;
+  openModal("Rolador de dados",'<p>Escolha um dado ou digite uma expressão de RPG.</p><div class="dice-menu">'+[4,6,8,10,12,20,100].map((s)=>'<button class="dice-face" data-dice-sides="'+s+'">d'+s+'</button>').join("")+'</div><div class="field"><label>Expressão</label><input id="dice-expression" value="1d20+0" placeholder="2d6+3"></div><div class="field"><label>Quantidade de dados</label><input id="dice-count" type="number" min="1" max="50" value="1"></div><div class="panel-actions"><button class="btn" id="dice-advantage">Vantagem (2d20)</button><button class="btn" id="dice-disadvantage">Desvantagem (2d20)</button></div><p id="dice-mode" class="help">Modo normal · todos os resultados somados.</p>',[
     {label:"Fechar",action:closeModal},
     {label:"Rolar",primary:true,action:()=>{
-      try{const result=parseDiceExpression($("dice-expression").value);closeModal();drawDiceResult(result);}
-      catch(error){toast(error.message);}
+      try{
+        let result;
+        if(mode==="normal")result=parseDiceExpression($("dice-expression").value);
+        else {
+          const first=Math.floor(Math.random()*20)+1,second=Math.floor(Math.random()*20)+1;
+          const chosen=mode==="advantage"?Math.max(first,second):Math.min(first,second);
+          result={expression:mode==="advantage"?"Vantagem · 2d20 (maior)":"Desvantagem · 2d20 (menor)",rolls:[first,second],modifier:0,total:chosen,sides:20,selected:chosen,mode:mode};
+        }
+        closeModal();drawDiceResult(result);
+      } catch(error){toast(error.message);}
     }}
   ]);
   $("modal-body").onclick=(e)=>{
     const die=e.target.closest("[data-dice-sides]");
-    if(die){$("dice-expression").value=($("dice-count").value||1)+"d"+die.dataset.diceSides+"+0";}
-    if(e.target.id==="dice-advantage")$("dice-expression").value="2d20";
-    if(e.target.id==="dice-disadvantage")$("dice-expression").value="2d20";
+    if(die){mode="normal";lastSides=Number(die.dataset.diceSides);$("dice-expression").value=clamp(Number($("dice-count").value)||1,1,50)+"d"+lastSides+"+0";$("dice-mode").textContent="Modo normal · todos os resultados somados.";}
+    if(e.target.id==="dice-advantage"||e.target.id==="dice-disadvantage"){
+      mode=e.target.id==="dice-advantage"?"advantage":"disadvantage";
+      $("dice-expression").value=mode==="advantage"?"2d20 (maior)":"2d20 (menor)";
+      $("dice-mode").textContent=mode==="advantage"?"Vantagem · lança 2d20 e usa o maior.":"Desvantagem · lança 2d20 e usa o menor.";
+    }
+  };
+  $("modal-body").oninput=(e)=>{
+    if(e.target.id==="dice-count"&&mode==="normal")$("dice-expression").value=clamp(Number(e.target.value)||1,1,50)+"d"+lastSides+"+0";
   };
 }
 function quickAction(action) {
