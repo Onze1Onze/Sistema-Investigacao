@@ -33,6 +33,20 @@ jobs:
           cp app.js /tmp/app.mjs
           node --check /tmp/app.mjs
           echo "Local application module syntax is valid."
+      - name: Validate stable public manifest URL
+        run: |
+          set -euo pipefail
+          curl -fLsS -D /tmp/manifest.headers "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/main/manifest.json" -o /tmp/public-manifest.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path("/tmp/public-manifest.json").read_text())
+          local=json.loads(Path("manifest.json").read_text())
+          assert data["manifest_version"]==1
+          assert data["version"]==local["version"]
+          assert data["action"]["popover"]==local["action"]["popover"]
+          print("Stable install manifest URL returned valid JSON for version "+data["version"]+".")
+          PY
       - name: Validate public HTML and icon response
         run: |
           set -euo pipefail
