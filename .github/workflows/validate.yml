@@ -54,7 +54,7 @@ jobs:
           echo "--- ICON response headers ---"
           cat /tmp/icon.headers
           grep -Eiq '^content-type: *text/html([; ]|$)' /tmp/popover.headers
-          grep -Eiq '^content-type: *image/svg\+xml([; ]|$)' /tmp/icon.headers
+          grep -Eiq '^content-type: *image/svg[+]xml([; ]|$)' /tmp/icon.headers
           echo "--- POPover body preview ---"
           head -c 1200 /tmp/popover.html
           echo
