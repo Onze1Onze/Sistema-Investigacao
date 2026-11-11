@@ -360,7 +360,7 @@ function addNode(type,extra={}) {
 }
 function addObject(type) {
   const info = objectInfo(type);
-  return addNode("object",{title:info.name,label:info.category,w:205,h:205,props:{objectType:type,objectState:"idle",activated:false,treeState:type==="tree"?"available":"locked"}});
+  return addNode("object",{title:info.name,label:info.category,w:205,h:205,gmOnly:type==="trigger",props:{objectType:type,objectState:"idle",activated:false,treeState:type==="tree"?"available":"locked"}});
 }
 function setTool(tool) {
   if(!canEdit && ["pin","wire","note","image","mark","tape","scratch","fog","reveal"].includes(tool)) {
@@ -885,15 +885,51 @@ addObject=function(type) {
   return node;
 };
 function showSafePuzzle(node) {
-  const digits=String(secretFor(node.id).code || "000").split("");
-  openModal("Cofre de combinação",
-    '<p>Gire os três discos e tente encontrar a combinação correta.</p><div style="display:flex;gap:10px;justify-content:center;margin:16px 0">'+digits.map((d,i)=>'<label style="display:grid;gap:6px;text-align:center;color:#d7bd8b;font:700 10px var(--ui)">DISCO '+(i+1)+'<input class="safe-digit" data-digit="'+i+'" inputmode="numeric" maxlength="1" value="0" style="width:58px;text-align:center;font:700 30px ui-monospace;background:#120c08;color:#f4dba3;border:2px solid #80613b;padding:8px"></label>').join("")+'</div><div class="help">A combinação é configurada pelo mestre no painel de propriedades.</div>',
-    [{label:"Cancelar",action:closeModal},{label:"Destrancar",primary:true,action:async()=>{
-      const value=Array.from(document.querySelectorAll(".safe-digit")).map((el)=>el.value.replace(/\D/g,"").slice(-1)||"0").join("");
+  const values=[0,0,0];
+  const renderWheel=(i)=>'<div class="safe-wheel" data-safe-wheel="'+i+'" role="slider" tabindex="0" aria-label="Disco '+(i+1)+'"><button type="button" data-safe-step="-1" aria-label="Diminuir">−</button><div class="safe-face"><span class="safe-prev">'+((values[i]+9)%10)+'</span><b class="safe-digit">'+values[i]+'</b><span class="safe-next">'+((values[i]+1)%10)+'</span></div><button type="button" data-safe-step="1" aria-label="Aumentar">＋</button></div>';
+  const body='<p>Gire os três discos do cofre. Arraste cada seletor para cima ou para baixo, use a roda do mouse ou os botões laterais.</p><div class="safe-dials">'+[0,1,2].map(renderWheel).join("")+'</div><p class="help">A combinação correta é configurada pelo mestre no painel de propriedades.</p>';
+  openModal("Cofre de combinação",body,[
+    {label:"Cancelar",action:closeModal},
+    {label:"Destrancar",primary:true,action:async()=>{
+      const value=values.join("");
       if(!isGM && isOwlbear){sendMasterRequest("safe-unlock",node.id,{value:value});closeModal();toast("Tentativa enviada ao mestre.");return;}
       if(await verifySecret(node,"code",value)){remember();node.props.unlocked=true;node.props.objectState="open";node.props.message="O mecanismo cedeu. O cofre está aberto.";closeModal();renderAll();scheduleSave();toast("Cofre destrancado.");}
       else toast("Combinação incorreta. O mecanismo permanece travado.");
-    }}]);
+    }}
+  ]);
+  const update=(wheel,value)=>{
+    const index=Number(wheel.dataset.safeWheel);
+    values[index]=(value+10)%10;
+    wheel.querySelector(".safe-prev").textContent=(values[index]+9)%10;
+    wheel.querySelector(".safe-digit").textContent=values[index];
+    wheel.querySelector(".safe-next").textContent=(values[index]+1)%10;
+    wheel.style.setProperty("--dial-angle",(values[index]*36)+"deg");
+  };
+  let active=null;
+  $("modal-body").onclick=(e)=>{
+    const button=e.target.closest("[data-safe-step]");
+    if(button){const wheel=button.closest("[data-safe-wheel]");if(wheel){const i=Number(wheel.dataset.safeWheel);update(wheel,values[i]+Number(button.dataset.safeStep));}}
+  };
+  $("modal-body").onwheel=(e)=>{
+    const wheel=e.target.closest("[data-safe-wheel]");if(!wheel)return;
+    e.preventDefault();const i=Number(wheel.dataset.safeWheel);update(wheel,values[i]+(e.deltaY<0?1:-1));
+  };
+  $("modal-body").onpointerdown=(e)=>{
+    const wheel=e.target.closest("[data-safe-wheel]");if(!wheel||e.target.closest("button"))return;
+    active={wheel:wheel,startY:e.clientY,startValue:values[Number(wheel.dataset.safeWheel)]};
+    wheel.setPointerCapture?.(e.pointerId);
+  };
+  $("modal-body").onpointermove=(e)=>{
+    if(!active)return;
+    const steps=Math.round((active.startY-e.clientY)/16);
+    update(active.wheel,active.startValue+steps);
+  };
+  $("modal-body").onpointerup=()=>{active=null;};
+  $("modal-body").onpointercancel=()=>{active=null;};
+  $("modal-body").onkeydown=(e)=>{
+    const wheel=e.target.closest("[data-safe-wheel]");if(!wheel)return;
+    if(e.key==="ArrowUp"||e.key==="ArrowRight"||e.key==="ArrowDown"||e.key==="ArrowLeft"){e.preventDefault();const i=Number(wheel.dataset.safeWheel);update(wheel,values[i]+(e.key==="ArrowUp"||e.key==="ArrowRight"?1:-1));}
+  };
 }
 function showLockPuzzle(node) {
   openModal("Senha da maleta",'<p>Digite a senha para liberar as travas.</p><input id="lock-password" type="password" autocomplete="off" placeholder="Senha da maleta" style="font:700 18px var(--typewriter);letter-spacing:.14em;text-align:center">',[{label:"Cancelar",action:closeModal},{label:"Abrir maleta",primary:true,action:async()=>{
