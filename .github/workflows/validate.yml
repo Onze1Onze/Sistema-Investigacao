@@ -64,4 +64,13 @@ jobs:
           for label,ok in checks: print(("PASS" if ok else "FAIL")+": "+label)
           if not all(ok for _,ok in checks): sys.exit(1)
           PY
+          curl -sSL -D /tmp/manifest.headers -o /tmp/installed-manifest.json -w "MANIFEST_HTTP=%{http_code} CONTENT_TYPE=%{content_type}\\n" "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/1768c5ebddd19166131b5b0f18900d8d7c400b9f/manifest.json"
+          grep -Eiq '^content-type: *application/json([; ]|$)' /tmp/manifest.headers
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("/tmp/installed-manifest.json").read_text())
+          assert m["action"]["popover"].startswith("https://rawcdn.githack.com/")
+          print("The install manifest is reachable and valid JSON.")
+          PY
           curl -fLsS "https://esm.sh/@owlbear-rodeo/sdk@3.1.0" -o /tmp/obr-sdk.js
