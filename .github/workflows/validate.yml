@@ -17,6 +17,7 @@ jobs:
           from pathlib import Path
           m=json.loads(Path("manifest.json").read_text())
           assert m["manifest_version"]==1
+          assert m["version"]
           assert m["action"]["popover"].startswith("https://rawcdn.githack.com/")
           assert Path("index.html").is_file()
           assert Path("style.css").is_file()
@@ -46,33 +47,32 @@ jobs:
           curl -fLsS -D /tmp/icon.headers "$(cat /tmp/icon-url)" -o /tmp/icon.svg
           python3 - <<'PY'
           from pathlib import Path
-          def headers(path):
-              return Path(path).read_text(errors="replace").lower()
-          pop=headers("/tmp/popover.headers")
-          icon=headers("/tmp/icon.headers")
-          html=Path("/tmp/popover.html").read_text(errors="replace")
-          svg=Path("/tmp/icon.svg").read_text(errors="replace")
+          def read(path): return Path(path).read_text(errors="replace")
+          pop=read("/tmp/popover.headers").lower()
+          icon=read("/tmp/icon.headers").lower()
+          html=read("/tmp/popover.html")
+          svg=read("/tmp/icon.svg")
           assert "200" in pop.splitlines()[0], pop.splitlines()[0]
-          assert "content-type: text/html" in pop, "Unexpected HTML content type"
+          assert "content-type: text/html" in pop, "Unexpected popover MIME type: "+pop
           assert "200" in icon.splitlines()[0], icon.splitlines()[0]
-          assert "content-type: image/svg+xml" in icon, "Unexpected SVG content type"
-          assert html.lstrip().lower().startswith("<!doctype html>"), html[:300]
+          assert "content-type: image/svg+xml" in icon, "Unexpected icon MIME type: "+icon
+          assert html.lstrip().lower().startswith("<!doctype html>"), html[:500]
           assert 'href="./style.css"' in html
           assert 'src="./app.js"' in html
           assert "<svg" in svg
-          print("Public HTML, icon, MIME types and document references are valid.")
+          print("Public HTML and SVG have HTTP 200, correct MIME types and expected markup.")
           PY
       - name: Validate public static dependencies
         run: |
           set -euo pipefail
           BASE="$(cat /tmp/popover-url)"
           ROOT="${BASE%/index.html}"
-          curl -fLsS "$ROOT/style.css" -o /tmp/public-style.css
-          curl -fLsS "$ROOT/app.js" -o /tmp/public-app.js
+          curl -fLsS -D /tmp/style.headers "$ROOT/style.css" -o /tmp/public-style.css
+          curl -fLsS -D /tmp/app.headers "$ROOT/app.js" -o /tmp/public-app.js
           test "$(wc -c </tmp/public-style.css)" -gt 10000
           test "$(wc -c </tmp/public-app.js)" -gt 40000
           cp /tmp/public-app.js /tmp/public-app.mjs
           node --check /tmp/public-app.mjs
-          echo "Public CSS and JavaScript dependencies are reachable and valid."
+          echo "Public stylesheet and module are reachable; served module syntax is valid."
           curl -fLsS "https://esm.sh/@owlbear-rodeo/sdk@3.1.0" -o /tmp/obr-sdk.js
           test "$(wc -c </tmp/obr-sdk.js)" -gt 100
