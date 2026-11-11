@@ -1558,6 +1558,7 @@ function pointerUp() {
       requestAnimationFrame(momentum);
     } else {renderItems();scheduleSave();}
     dropTargetIds.clear();
+    itemLayer.querySelectorAll(".drop-target").forEach((el)=>el.classList.remove("drop-target"));
   }
   if(pan){pan=null;document.body.classList.remove("panning");scheduleSave();}
   if(drawState) {
@@ -2182,8 +2183,9 @@ function addVideoFromUrl() {
 
 
 function savePrivateCollections() {
-  privateData.handIds=Array.from(new Set(privateData.handIds||[])).filter((id)=>!!getNode(id));
-  privateData.pocketIds=Array.from(new Set(privateData.pocketIds||[])).filter((id)=>!!getNode(id));
+  const allIds=new Set(workspace.boards.flatMap((entry)=>(entry.data.nodes||[]).map((node)=>node.id)));
+  privateData.handIds=Array.from(new Set(privateData.handIds||[])).filter((id)=>allIds.has(id));
+  privateData.pocketIds=Array.from(new Set(privateData.pocketIds||[])).filter((id)=>allIds.has(id));
   persistPrivate();
 }
 function addToHand(node) {
@@ -2395,6 +2397,7 @@ function applyObjectDrop(source,target) {
 }
 function handleDropInteractions(movedIds) {
   if(!isGM || !canEdit)return;
+  const before=clone(boardState);
   const moving=new Set(movedIds),events=[];
   movedIds.forEach((id)=>{
     const source=getNode(id);if(!source)return;
@@ -2405,7 +2408,8 @@ function handleDropInteractions(movedIds) {
     });
   });
   if(events.length) {
-    remember();
+    undoStack.push(before);if(undoStack.length>60)undoStack.shift();redoStack=[];
+    dropTargetIds.clear();
     renderAll();scheduleSave();
     const body=events.map((event)=>'<div class="info-card"><strong>'+esc(event.message)+'</strong><small>'+esc(event.source)+' → '+esc(event.target)+'</small></div>').join("");
     openModal("Interação entre evidências",body,[{label:"Continuar investigação",primary:true,action:closeModal}]);
