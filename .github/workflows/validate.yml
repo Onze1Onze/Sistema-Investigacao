@@ -49,12 +49,12 @@ jobs:
           PY
           curl -fLsS -D /tmp/popover.headers "$(cat /tmp/popover-url)" -o /tmp/popover.html
           curl -fLsS -D /tmp/icon.headers "$(cat /tmp/icon-url)" -o /tmp/icon.svg
-          grep -Eiq '^content-type: *text/html([; ]|$)' /tmp/popover.headers
-          grep -Eiq '^content-type: *image/svg\+xml([; ]|$)' /tmp/icon.headers
           echo "--- POPover response headers ---"
           cat /tmp/popover.headers
           echo "--- ICON response headers ---"
           cat /tmp/icon.headers
+          grep -Eiq '^content-type: *text/html([; ]|$)' /tmp/popover.headers
+          grep -Eiq '^content-type: *image/svg\+xml([; ]|$)' /tmp/icon.headers
           echo "--- POPover document references ---"
           grep -oE '(href|src)="[^"]+"' /tmp/popover.html | head -20
           grep -Eiq '<link rel="stylesheet" href="./style.css">' /tmp/popover.html
