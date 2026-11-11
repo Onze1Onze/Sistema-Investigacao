@@ -515,7 +515,8 @@ function renderNode(node) {
   } else if (node.type==="book") {
     const pages=node.props.pages || [];
     const page=pages[clamp(Number(node.props.page||0),0,Math.max(0,pages.length-1))] || {title:"Página",body:""};
-    content='<div class="item-body notebook-lines"><div style="font:700 10px var(--ui);letter-spacing:.15em;margin-bottom:8px">'+esc(page.title || "Página")+'</div>'+esc((page.body||"").slice(0,250))+'<div style="font:10px var(--ui);color:#795e3d;margin-top:8px">'+((page.collages||[]).length?("▧ "+page.collages.length+" colagem(ns) anexada(s)"):"")+'</div><div class="panel-actions"><button class="object-action" data-item-action="book-open">Abrir caderno</button></div></div>';
+    const collageThumbs=(page.collages||[]).slice(0,3).map((src)=>'<img src="'+esc(safeSrc(src))+'" style="max-width:48%;max-height:55px;object-fit:contain;margin:3px;border:1px solid #9e8a69">').join("");
+    content='<div class="item-body notebook-lines"><div style="font:700 10px var(--ui);letter-spacing:.15em;margin-bottom:8px">'+esc(page.title || "Página")+'</div>'+esc((page.body||"").slice(0,250))+'<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:7px">'+collageThumbs+'</div><div class="panel-actions"><button class="object-action" data-item-action="book-open">Abrir caderno</button></div></div>';
   } else if (node.type==="audio") {
     content='<div class="item-body"><audio controls preload="metadata" style="width:100%" src="'+esc(safeSrc(node.src))+'"></audio><p>'+esc(node.body || "Gravação anexada ao caso.")+'</p></div>';
   } else if (node.type==="pdf") {
@@ -1237,7 +1238,7 @@ function bookEditor(node) {
     if(e.target.id==="book-prev"&&index>0){saveBookPageTemporary(node,index);node.props.page=index-1;bookEditor(node);}
     if(e.target.id==="book-next"){saveBookPageTemporary(node,index);if(index===pages.length-1){node.props.pages.push({title:"Página "+(pages.length+1),body:""});}node.props.page=Math.min(index+1,node.props.pages.length-1);bookEditor(node);}
     if(e.target.id==="book-tear"){saveBookPageTemporary(node,index);tearBookPage(node,index);closeModal();}
-    if(e.target.id==="book-add-collage"){saveBookPageTemporary(node,index);const input=document.createElement("input");input.type="file";input.accept="image/*";input.onchange=()=>{const file=input.files&&input.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{const page=node.props.pages[index];page.collages=page.collages||[];page.collages.push(String(reader.result));bookEditor(node);scheduleSave();};reader.readAsDataURL(file);};input.click();}
+    if(e.target.id==="book-add-collage"){saveBookPageTemporary(node,index);const input=document.createElement("input");input.type="file";input.accept="image/*";input.onchange=()=>{const file=input.files&&input.files[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{const image=new Image();image.onload=()=>{const scale=Math.min(1,700/Math.max(image.naturalWidth,image.naturalHeight));const canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));canvas.getContext("2d").drawImage(image,0,0,canvas.width,canvas.height);remember();const page=node.props.pages[index];page.collages=page.collages||[];page.collages.push(canvas.toDataURL("image/jpeg",.72));bookEditor(node);scheduleSave();};image.src=String(reader.result);};reader.readAsDataURL(file);};input.click();}
     if(e.target.closest("[data-book-remove-collage]")){const idx=Number(e.target.closest("[data-book-remove-collage]").dataset.bookRemoveCollage);const page=node.props.pages[index];if(page.collages)page.collages.splice(idx,1);bookEditor(node);scheduleSave();}
   };
 }
@@ -1249,8 +1250,11 @@ function saveBookPageTemporary(node,index) {
 }
 function tearBookPage(node,index) {
   const pages=node.props.pages||[];if(pages.length<=1)return toast("O caderno precisa manter pelo menos uma página.");
+  remember();
   const page=pages.splice(index,1)[0];
-  const leaf=addNode("leaf",{title:page.title||"Folha arrancada",body:page.body||"",filename:"FOLHA ARRANCADA",w:235,h:260});
+  const leaf=nodeDefaults("leaf",{title:page.title||"Folha arrancada",body:page.body||"",filename:"FOLHA ARRANCADA",w:235,h:260});
+  leaf.props.collages=page.collages||[];
+  boardState.nodes.push(leaf);
   node.props.page=clamp(index-1,0,pages.length-1);
   selectedIds=[leaf.id];renderAll();scheduleSave();toast("Folha arrancada do caderno.");
 }
@@ -2278,7 +2282,7 @@ function drawDiceResult(result) {
     {label:"Fechar",action:closeModal},
     {label:"Compartilhar na sala",primary:true,action:()=>{
       if(OBR_API&&sceneReady)OBR_API.broadcast.sendMessage(BROADCAST_CHANNEL,{kind:"qi-dice",name:roleName,result:result}).catch(()=>{});
-      closeModal();toast("Resultado enviado aos jogadores.");
+      closeModal();toast(OBR_API&&sceneReady?"Resultado enviado aos jogadores.":"Rolagem registrada localmente; abra uma cena para compartilhar.");
     }}
   ]);
 }
