@@ -83,7 +83,7 @@ function createBoard(name) {
     marks:[],
     settings:{
       light:{mode:"none",color:"#ffd9a0",intensity:60,direction:"c",radius:230},
-      uv:false,lamp:false,torch:false,
+      uv:false,lamp:false,torch:false,pinsVisible:true,
       effects:{fog:false,ash:false,web:false,blood:false,wisp:false,mask:false,bats:false,eyes:false,rain:false,snow:false,embers:false,ectoplasm:false,smoke:false},
       audio:{muted:false,general:45,items:70,effects:45,voices:70,ambience:"none"},
       sanity:{enabled:false,value:100}
@@ -103,6 +103,7 @@ function normalizeBoard(b) {
   out.marks = Array.isArray(n.marks) ? n.marks : [];
   out.settings = Object.assign(base.settings,n.settings || {});
   out.settings.light = Object.assign(base.settings.light,(n.settings && n.settings.light) || {});
+  if(typeof out.settings.pinsVisible!=="boolean")out.settings.pinsVisible=true;
   out.settings.effects = Object.assign(base.settings.effects,(n.settings && n.settings.effects) || {});
   out.settings.audio = Object.assign(base.settings.audio,(n.settings && n.settings.audio) || {});
   out.settings.sanity = Object.assign(base.settings.sanity,(n.settings && n.settings.sanity) || {});
@@ -526,7 +527,7 @@ function renderNode(node) {
   } else if (node.type==="object") {
     content=objectInside(node);
   }
-  const pinHtml=(node.pins||[]).map((pin)=>'<button class="pin-dot" data-pin-node="'+esc(node.id)+'" data-pin-id="'+esc(pin.id)+'" title="'+esc(pin.label||"Pin")+'" style="left:'+pin.x+'px;top:'+pin.y+'px"><span class="pin-label">'+esc(pin.label||"Pista")+'</span></button>').join("");
+  const pinHtml=boardState.settings.pinsVisible?(node.pins||[]).map((pin)=>'<button class="pin-dot" data-pin-node="'+esc(node.id)+'" data-pin-id="'+esc(pin.id)+'" title="'+esc(pin.label||"Pin")+'" style="left:'+pin.x+'px;top:'+pin.y+'px"><span class="pin-label">'+esc(pin.label||"Pista")+'</span></button>').join(""):"";
   const footer='<div class="item-footer"><span>'+esc(node.filename || "SAI · EVIDÊNCIA")+'</span><span>'+esc(node.type.toUpperCase())+'</span></div>';
   const handles=selectedIds.includes(node.id) && canEdit ? '<span class="item-handle resize" data-handle="resize"></span><span class="item-handle rotate" data-handle="rotate"></span>' : "";
   return '<article class="'+itemClasses(node)+'" data-item="'+esc(node.id)+'" style="'+style+'"><div class="item-shell">'+header+content+footer+handles+pinHtml+(node.gmOnly?'<span class="tree-badge">M</span>':'')+'</div></article>';
@@ -546,6 +547,8 @@ function itemClasses(node) {
   }
   if (node.uvSecret) c.push("uv-hidden");
   if (node.locked) c.push("locked");
+  if((privateData.handIds||[]).includes(node.id))c.push("grabbed");
+  if((privateData.pocketIds||[]).includes(node.id))c.push("inpocket");
   return c.join(" ");
 }
 function drawFog(node) {
@@ -568,7 +571,8 @@ function drawFog(node) {
   ctx.globalCompositeOperation="source-over";
 }
 function renderItems() {
-  const nodes=boardState.nodes.filter((node)=>isGM || !node.gmOnly);
+  const pocketIds=new Set(privateData.pocketIds||[]);
+  const nodes=boardState.nodes.filter((node)=>(isGM || !node.gmOnly)&&!pocketIds.has(node.id));
   itemLayer.innerHTML=nodes.map(renderNode).join("");
   nodes.forEach((node)=>{if(node.type==="map")drawFog(node);});
   renderWires();
@@ -635,6 +639,10 @@ function renderHeader() {
   $("sanity-value").textContent=boardState.settings.sanity.value;
   $("sanity-fill").style.height=boardState.settings.sanity.value+"%";
   $("minimap").hidden=!minimapVisible;
+  const quick=$("quick-actions");
+  if(quick)quick.hidden=!selectedIds.some((id)=>getNode(id))||document.body.classList.contains("obs-mode");
+  const pinButton=$("pins-toggle");
+  if(pinButton)pinButton.classList.toggle("active",!!boardState.settings.pinsVisible);
 }
 function updateLight() {
   const light=boardState.settings.light;
@@ -750,6 +758,7 @@ function renderEffectsPanel() {
   let html='<h2>Atmosfera da investigação</h2><h3>Iluminação de campo</h3>';
   html+=field("Modo de iluminação",'<select id="light-mode"><option value="none">Luz ambiente</option><option value="room">Escurecer a sala</option><option value="lamp">Luminária</option><option value="torch">Lanterna de mão</option><option value="uv">Luz negra</option></select>');
   html+='<div class="row-fields">'+field("Cor da luz",'<input type="color" id="light-color" value="'+light.color+'">')+field("Intensidade",'<input type="range" id="light-intensity" min="0" max="100" value="'+light.intensity+'">')+'</div>';
+  html+=field("Direção da luz",'<select id="light-direction"><option value="l">Superior esquerda</option><option value="c">Superior centro</option><option value="r">Superior direita</option></select>');
   html+=field("Tamanho da lanterna / UV",'<input type="range" id="light-radius" min="80" max="600" value="'+light.radius+'">');
   html+='<div class="panel-actions"><button class="btn" data-do="toggle-uv">Luz negra</button><button class="btn" data-do="toggle-lamp">Luminária</button><button class="btn" data-do="toggle-torch">Lanterna</button></div>';
   html+='<h3>Efeitos de tela</h3><div class="field"><label>Ative os efeitos da cena</label>';
@@ -760,6 +769,7 @@ function renderEffectsPanel() {
   html+=field("Ambiente",'<select id="ambience-select"><option value="none">Silêncio</option><option value="wind">Vento distante</option><option value="static">Estática de rádio</option><option value="drone">Zumbido subterrâneo</option></select>')+'<div class="panel-actions"><button class="btn" data-do="ambient-start">Iniciar ambiente</button><button class="btn" data-do="ambient-stop">Parar ambiente</button></div>';
   inspectorContent.innerHTML=html;
   $("light-mode").value=light.mode;
+  $("light-direction").value=light.direction||"c";
   $("ambience-select").value=audio.ambience;
 }
 function renderBoardsPanel() {
@@ -1681,6 +1691,7 @@ function inspectorInput(e) {
     renderHeader();renderEffects();scheduleSave();return;
   }
   if(e.target.id==="light-color") {boardState.settings.light.color=e.target.value;updateLight();scheduleSave();return;}
+  if(e.target.id==="light-direction") {boardState.settings.light.direction=e.target.value;updateLight();scheduleSave();return;}
   if(e.target.id==="light-intensity") {boardState.settings.light.intensity=Number(e.target.value);updateLight();scheduleSave();return;}
   if(e.target.id==="light-radius") {boardState.settings.light.radius=Number(e.target.value);updateLight();scheduleSave();return;}
   if(e.target.id==="sanity-enabled") {boardState.settings.sanity.enabled=e.target.checked;renderHeader();scheduleSave();return;}
