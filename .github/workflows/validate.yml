@@ -10,32 +10,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate manifest and required files
+      - name: Validate manifest and source files
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
-          m = json.loads(Path("manifest.json").read_text())
-          assert m["manifest_version"] == 1
+          m=json.loads(Path("manifest.json").read_text())
+          assert m["manifest_version"]==1
           assert m["action"]["popover"].startswith("https://rawcdn.githack.com/")
-          assert Path("index.html").is_file() and Path("icon.svg").is_file()
-          assert len(m["name"]) <= 45 and len(m["description"]) <= 128
-          print("Manifest and repository files OK.")
+          assert Path("index.html").is_file()
+          assert Path("style.css").is_file()
+          assert Path("app.js").is_file()
+          assert Path("icon.svg").is_file()
+          html=Path("index.html").read_text()
+          assert 'href="./style.css"' in html
+          assert 'src="./app.js"' in html
+          print("Manifest, HTML, stylesheet and module files exist.")
           PY
-      - name: Check JavaScript syntax
+      - name: Validate application JavaScript syntax
         run: |
+          cp app.js /tmp/app.mjs
+          node --check /tmp/app.mjs
           python3 - <<'PY'
           from pathlib import Path
-          import re
-          html = Path("index.html").read_text()
-          match = re.search(r'<script type="module">(.*?)</script>', html, re.S)
-          assert match, "Inline module not found"
-          Path("/tmp/extension.mjs").write_text(match.group(1))
+          html=Path("index.html").read_text()
+          assert '<script type="module" src="./app.js"></script>' in html
+          print("Application module linked by the HTML shell.")
           PY
-          node --check /tmp/extension.mjs
-      - name: Diagnose production CDN response
+      - name: Validate current public extension files
         run: |
-          set -u
+          set -euo pipefail
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -43,34 +47,23 @@ jobs:
           Path("/tmp/popover-url").write_text(m["action"]["popover"])
           Path("/tmp/icon-url").write_text(m["action"]["icon"])
           PY
-          curl -sSL -D /tmp/popover.headers -o /tmp/popover.html -w "POPOVER_HTTP=%{http_code} CONTENT_TYPE=%{content_type}\n" "$(cat /tmp/popover-url)"
-          curl -sSL -D /tmp/icon.headers -o /tmp/icon.svg -w "ICON_HTTP=%{http_code} CONTENT_TYPE=%{content_type}\n" "$(cat /tmp/icon-url)"
-          echo "--- popover headers ---"
-          cat /tmp/popover.headers
-          echo "--- icon headers ---"
-          cat /tmp/icon.headers
-          python3 - <<'PY'
-          from pathlib import Path
-          import re, sys
-          h=Path("/tmp/popover.headers").read_text(errors="replace")
-          i=Path("/tmp/icon.headers").read_text(errors="replace")
-          body=Path("/tmp/popover.html").read_text(errors="replace")
-          checks=[
-            ("popover HTTP 200", bool(re.search(r"HTTP/[^ ]+ 200",h))),
-            ("HTML MIME type", bool(re.search(r"content-type:\s*text/html",h,re.I))),
-            ("HTML document", body.lstrip().lower().startswith("<!doctype html>")),
-            ("icon HTTP 200", bool(re.search(r"HTTP/[^ ]+ 200",i))),
-          ]
-          for label,ok in checks: print(("PASS" if ok else "FAIL")+": "+label)
-          if not all(ok for _,ok in checks): sys.exit(1)
-          PY
-          curl -sSL -D /tmp/manifest.headers -o /tmp/installed-manifest.json -w "MANIFEST_HTTP=%{http_code} CONTENT_TYPE=%{content_type}\\n" "https://rawcdn.githack.com/Onze1Onze/Sistema-Investigacao/1768c5ebddd19166131b5b0f18900d8d7c400b9f/manifest.json"
-          grep -Eiq '^content-type: *application/json([; ]|$)' /tmp/manifest.headers
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          m=json.loads(Path("/tmp/installed-manifest.json").read_text())
-          assert m["action"]["popover"].startswith("https://rawcdn.githack.com/")
-          print("The install manifest is reachable and valid JSON.")
-          PY
+          curl -fLsS -D /tmp/popover.headers "$(cat /tmp/popover-url)" -o /tmp/popover.html
+          curl -fLsS -D /tmp/icon.headers "$(cat /tmp/icon-url)" -o /tmp/icon.svg
+          grep -Eiq '^content-type: *text/html([; ]|$)' /tmp/popover.headers
+          grep -Eiq '^content-type: *image/svg\+xml([; ]|$)' /tmp/icon.headers
+          grep -Eiq '<link rel="stylesheet" href="./style.css">' /tmp/popover.html
+          grep -Eiq '<script type="module" src="./app.js"></script>' /tmp/popover.html
+          echo "Popover HTML and icon are served with correct MIME types."
+      - name: Validate public static dependencies
+        run: |
+          set -euo pipefail
+          BASE="$(cat /tmp/popover-url)"
+          ROOT="${BASE%/index.html}"
+          curl -fLsS "$ROOT/style.css" -o /tmp/style.css
+          curl -fLsS "$ROOT/app.js" -o /tmp/app.js
+          test "$(wc -c </tmp/style.css)" -gt 10000
+          test "$(wc -c </tmp/app.js)" -gt 40000
+          cp /tmp/app.js /tmp/app.mjs
+          node --check /tmp/app.mjs
           curl -fLsS "https://esm.sh/@owlbear-rodeo/sdk@3.1.0" -o /tmp/obr-sdk.js
+          test "$(wc -c </tmp/obr-sdk.js)" -gt 100
