@@ -64,6 +64,8 @@ let workspace = null;
 let undoStack = [];
 let redoStack = [];
 let roleName = "Investigador";
+let playerColor = "#c3391d";
+let playerSyncView = true;
 
 function createBoard(name) {
   return {
@@ -325,7 +327,8 @@ function nodeDefaults(type,extra={}) {
     tape:{title:"Fita adesiva",body:"",w:150,h:30,pins:[]},
     scratch:{title:"Raspadinha",body:"Mensagem escondida",w:205,h:125,props:{progress:0,revealed:false}},
     audio:{title:"Gravação de áudio",body:"",w:250,h:130},
-    pdf:{title:"Documento PDF",body:"",w:240,h:170}
+    pdf:{title:"Documento PDF",body:"",w:240,h:170},
+    video:{title:"Vídeo de evidência",body:"Reprodução de vídeo incorporada.",w:360,h:250}
   };
   Object.assign(base,types[type] || {});
   return Object.assign(base,extra);
@@ -687,7 +690,7 @@ function renderProperties() {
     html+='<div class="panel-actions"><button class="btn primary" data-do="interact">Interagir</button></div>';
   }
   if (node.type==="scratch") html+=field("Mensagem sob a raspadinha",'<textarea data-edit="body">'+esc(node.body||"")+'</textarea>');
-  if (node.type==="audio" || node.type==="pdf") html+=field("URL externa",'<input data-edit="src" value="'+esc(node.src||"")+'" placeholder="https://...">');
+  if (node.type==="audio" || node.type==="pdf" || node.type==="video") html+=field("URL externa",'<input data-edit="src" value="'+esc(node.src||"")+'" placeholder="https://...">');
   html+='<h3>Transformação</h3><div class="row-fields">'+field("Largura",'<input data-edit-num="w" type="number" min="60" max="1200" value="'+node.w+'">')+field("Altura",'<input data-edit-num="h" type="number" min="45" max="900" value="'+node.h+'">')+'</div>';
   html+=field("Rotação",'<input data-edit-num="rotation" type="number" min="-360" max="360" value="'+node.rotation+'">');
   html+='<h3>Camadas e visibilidade</h3><div class="field"><label><input type="checkbox" data-edit-check="locked" '+(node.locked?"checked":"")+'> Bloquear movimentação</label></div>';
@@ -761,6 +764,7 @@ function renderSharePanel() {
   html+='<div class="sync-card"><strong>'+esc(state)+'</strong><small>'+(isOwlbear?(sceneReady?"O mestre grava o quadro nos metadados da cena. Todos os jogadores que usam a mesma cena recebem as alterações.":"Abra uma cena para carregar ou sincronizar o dossiê."):"O salvamento está neste dispositivo. Abra a extensão dentro de uma sala do Owlbear para compartilhar a mesa.")+'</small></div>';
   html+='<div class="fx-status"><span style="background:'+(isGM?'#8db56e':'#d3ad5b')+'"></span>'+(isGM?"Permissão de mestre":"Visualização de jogador")+'</div>';
   html+='<h3>Código de compartilhamento</h3><p>O código transporta o quadro como backup. Para jogar em conjunto em tempo real, todos devem abrir a mesma sala e cena do Owlbear.</p><div class="panel-actions"><button class="btn primary" data-do="share-code">Gerar código</button><button class="btn" data-do="import-code">Colar código</button></div>';
+  html+='<h3>Preferências do jogador</h3>'+field("Sua cor na sala",'<input type="color" id="player-color" value="'+esc(playerColor)+'">')+'<div class="field"><label><input type="checkbox" id="player-sync-view" '+(playerSyncView?"checked":"")+'> Acompanhar a visão do mestre</label></div><div class="panel-actions"><button class="btn" data-do="player-name">Alterar nome</button></div>';
   html+='<h3>Arquivos de mestre</h3><p>Senhas, combinações e evidências marcadas como exclusivas do mestre são mantidas no armazenamento local do mestre e não são enviadas como texto aberto aos jogadores.</p>';
   html+='<div class="panel-actions"><button class="btn" data-do="export-gm">Exportar backup de mestre</button><button class="btn" data-do="import-gm">Importar backup de mestre</button></div>';
   inspectorContent.innerHTML=html;
@@ -1626,6 +1630,12 @@ function inspectorClick(e) {
     case "export-gm":exportJSON(true);break;
     case "import-json":$("json-input").dataset.gm="false";$("json-input").click();break;
     case "import-gm":$("json-input").dataset.gm="true";$("json-input").click();break;
+    case "player-name":
+      if(!OBR_API)return toast("Alteração de nome disponível dentro do Owlbear.");
+      openModal("Nome do investigador",'<div class="field"><label>Nome na sala</label><input id="player-name-input" value="'+esc(roleName)+'"></div>',[
+        {label:"Cancelar",action:closeModal},
+        {label:"Salvar",primary:true,action:async()=>{try{await OBR_API.player.setName($("player-name-input").value);roleName=$("player-name-input").value;renderHeader();closeModal();}catch(error){toast("Não foi possível alterar o nome.");}}}
+      ]);break;
     case "export-board-png":exportBoardPNG();break;
     case "clear-board":clearBoard();break;
     case "share-code":exportShareCode();break;
@@ -1655,6 +1665,8 @@ function inspectorInput(e) {
   if(e.target.id==="sanity-range") {boardState.settings.sanity.value=Number(e.target.value);renderHeader();scheduleSave();return;}
   if(e.target.id==="audio-mute") {boardState.settings.audio.muted=e.target.checked;stopAmbient();scheduleSave();return;}
   if(e.target.id==="ambience-select") {boardState.settings.audio.ambience=e.target.value;scheduleSave();return;}
+  if(e.target.id==="player-color") {playerColor=e.target.value;if(OBR_API)OBR_API.player.setColor(playerColor).catch(()=>toast("Não foi possível alterar a cor do jogador."));return;}
+  if(e.target.id==="player-sync-view") {playerSyncView=e.target.checked;if(OBR_API)OBR_API.player.setSyncView(playerSyncView).catch(()=>{});return;}
   if(e.target.matches("[data-edit]")&&node) {
     node[e.target.dataset.edit]=e.target.value;
     const item=itemLayer.querySelector('[data-item="'+node.id+'"]');
@@ -1737,12 +1749,13 @@ function bindUI() {
   $("zoom-out").addEventListener("click",()=>zoomAt(viewport.clientWidth/2,viewport.clientHeight/2,1/1.15));
   $("fit-board").addEventListener("click",frameBoard);
   $("more-board").addEventListener("click",()=>{
-    openModal("Mais ferramentas",'<div class="catalog-grid"><button class="catalog-card" data-more="import-library"><span class="art">▧</span><span><b>Biblioteca Owlbear</b><small>Importar imagens da biblioteca da sala.</small></span></button><button class="catalog-card" data-more="audio"><span class="art">♫</span><span><b>Adicionar áudio</b><small>Inserir gravação no dossiê.</small></span></button><button class="catalog-card" data-more="help"><span class="art">?</span><span><b>Ajuda</b><small>Atalhos e manual de campo.</small></span></button><button class="catalog-card" data-more="new"><span class="art">＋</span><span><b>Novo caso</b><small>Criar um quadro separado.</small></span></button></div>',[{label:"Fechar",action:closeModal}]);
+    openModal("Mais ferramentas",'<div class="catalog-grid"><button class="catalog-card" data-more="import-library"><span class="art">▧</span><span><b>Biblioteca Owlbear</b><small>Importar imagens da biblioteca da sala.</small></span></button><button class="catalog-card" data-more="audio"><span class="art">♫</span><span><b>Adicionar áudio</b><small>Inserir gravação no dossiê.</small></span></button><button class="catalog-card" data-more="video"><span class="art">▶</span><span><b>Vídeo / YouTube</b><small>Incorporar vídeo como evidência.</small></span></button><button class="catalog-card" data-more="help"><span class="art">?</span><span><b>Ajuda</b><small>Atalhos e manual de campo.</small></span></button><button class="catalog-card" data-more="new"><span class="art">＋</span><span><b>Novo caso</b><small>Criar um quadro separado.</small></span></button></div>',[{label:"Fechar",action:closeModal}]);
     $("modal-body").onclick=(e)=>{
       const b=e.target.closest("[data-more]");if(!b)return;
       const act=b.dataset.more;closeModal();
       if(act==="import-library")importOwlbearImages();
       if(act==="audio")$("audio-input").click();
+      if(act==="video")addVideoFromUrl();
       if(act==="help")showHelp();
       if(act==="new")createBoardEntry();
     };
@@ -1891,8 +1904,11 @@ async function setupOwlbear() {
         const role=await OBR_API.player.getRole();
         isGM=role==="GM";
         canEdit=isGM;
-        roleName=isGM?"Mestre":"Jogador";
-      } catch(error) {isGM=true;canEdit=true;}
+        roleName=await OBR_API.player.getName();
+        playerColor=await OBR_API.player.getColor();
+        playerSyncView=await OBR_API.player.getSyncView();
+      } catch(error) {isGM=true;canEdit=true;roleName="Mestre";}
+      document.body.classList.toggle("player-view",!isGM);
       $("connection-text").textContent="Owlbear · conectado";
       sceneReady=await OBR_API.scene.isReady().catch(()=>false);
       if(sceneReady)await loadSceneWorkspace();
@@ -2033,4 +2049,29 @@ async function handleMasterRequest(event) {
   }
   if(ok){renderAll();await persistNow();}
   if(OBR_API)OBR_API.broadcast.sendMessage(BROADCAST_CHANNEL,{kind:"qi-interaction-result",message:message,ok:ok},{destination:"REMOTE"}).catch(()=>{});
+}
+
+function youtubeEmbed(input) {
+  const value=String(input||"").trim();
+  if(!/^https:\/\//i.test(value))return "";
+  try {
+    const url=new URL(value);
+    let id="";
+    if(url.hostname==="youtu.be")id=url.pathname.slice(1);
+    else if(url.hostname.endsWith("youtube.com")) {
+      id=url.searchParams.get("v")||url.pathname.split("/").filter(Boolean).pop();
+    }
+    if(!id||!/^[A-Za-z0-9_-]{6,20}$/.test(id))return "";
+    return "https://www.youtube-nocookie.com/embed/"+id+"?rel=0";
+  } catch(error){return "";}
+}
+function addVideoFromUrl() {
+  openModal("Vídeo de evidência",'<p>Insira um link do YouTube para incorporar no quadro.</p><div class="field"><label>Endereço do vídeo</label><input id="video-url" placeholder="https://www.youtube.com/watch?v=..."></div>',[
+    {label:"Cancelar",action:closeModal},
+    {label:"Adicionar vídeo",primary:true,action:()=>{
+      const src=youtubeEmbed($("video-url").value);
+      if(!src)return toast("Link do YouTube inválido.");
+      closeModal();addNode("video",{title:"Vídeo de evidência",src:src,filename:"YOUTUBE",w:380,h:270});
+    }}
+  ]);
 }
