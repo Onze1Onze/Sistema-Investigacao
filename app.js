@@ -901,7 +901,7 @@ function showOuija(node) {
   const letters="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   openModal("Tábua Ouija",'<p>Movimente a prancheta entre as letras e registre a resposta recebida.</p><div class="catalog-grid" style="grid-template-columns:repeat(6,1fr)">'+letters.split("").map((c)=>'<button class="btn" data-ouija-letter="'+c+'">'+c+'</button>').join("")+'<button class="btn" data-ouija-letter="SIM">SIM</button><button class="btn" data-ouija-letter="NÃO">NÃO</button><button class="btn" data-ouija-letter="ADEUS">ADEUS</button></div><div class="field" style="margin-top:12px"><label>Mensagem formada</label><input id="ouija-message" value="'+esc(node.props.message||"")+'"></div>',[
     {label:"Cancelar",action:closeModal},
-    {label:"Registrar no objeto",primary:true,action:()=>{remember();node.props.message=$("ouija-message").value;node.props.objectState="on";closeModal();renderAll();scheduleSave();}}
+    {label:"Registrar no objeto",primary:true,action:()=>{const message=$("ouija-message").value;if(!isGM&&isOwlbear){sendMasterRequest("ouija-open",node.id,{message:message});closeModal();toast("Mensagem enviada ao mestre.");return;}remember();node.props.message=message;node.props.objectState="on";closeModal();renderAll();scheduleSave();}}
   ]);
   $("modal-body").addEventListener("click",(e)=>{
     const letter=e.target.closest("[data-ouija-letter]");
@@ -934,7 +934,7 @@ function showTimer(node) {
 }
 function runObjectAction(node,action) {
   if(!node) return;
-  if(!isGM && isOwlbear && !["safe-open","lock-open","radio-tune"].includes(action)) {
+  if(!isGM && isOwlbear && !["safe-open","lock-open","radio-tune","ouija-open"].includes(action)) {
     sendMasterRequest(action,node.id,{});
     return toast("Interação enviada ao mestre.");
   }
@@ -1889,6 +1889,12 @@ async function setupOwlbear() {
         try{localStorage.setItem(LOCAL_KEY,JSON.stringify(workspace));}catch(error){}
         toast("Quadro atualizado por outro participante.");
       });
+      OBR_API.broadcast.onMessage(BROADCAST_CHANNEL,(event)=>{
+        const data=event&&event.data;
+        if(!data)return;
+        if(data.kind==="qi-interaction"&&isGM){handleMasterRequest(event);}
+        else if(data.kind==="qi-interaction-result"&&!isGM){toast(data.message||"Interação processada pelo mestre.");}
+      });
     });
   } catch(error) {
     console.warn("SDK Owlbear indisponível.",error);
@@ -1955,7 +1961,7 @@ async function handleMasterRequest(event) {
     case "crystal-open":
       remember();node.props.visionRevealed=true;node.props.message=secretFor(node.id).vision||node.props.message;message="A visão da bola de cristal foi revelada.";break;
     case "tarot-draw":
-      tarotDraw(node);message="Uma tiragem de tarô foi solicitada.";break;
+      remember();{const draw=[...tarotCards].sort(()=>Math.random()-.5).slice(0,3);node.props.tarotDraw=draw;node.props.message=draw.map((c,i)=>(i+1)+". "+c[0]).join(" · ");}message="Uma nova tiragem de tarô foi realizada.";break;
     case "scale-test":
       remember();node.props.beam=Math.random()>.5?0:8;node.props.message=node.props.beam===0?"A pena e o coração estão em equilíbrio.":"O coração pesa mais que a pena.";break;
     case "ouija-open":
