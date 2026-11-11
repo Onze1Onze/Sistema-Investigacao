@@ -294,7 +294,11 @@ function objectCatalog() {
     {type:"key",name:"Chave antiga",icon:"🗝️",category:"Objetos",desc:"Pode ser encaixada em objetos compatíveis."},
     {type:"coin",name:"Moeda antiga",icon:"🪙",category:"Objetos",desc:"Evidência metálica reversível."},
     {type:"trigger",name:"Ativador oculto",icon:"◈",category:"Mecanismos",desc:"Gatilho visível apenas ao mestre."},
-    {type:"tree",name:"Fio condutor / árvore",icon:"🌳",category:"Investigação",desc:"Nós de pistas com estados bloqueado, disponível e resolvido."}
+    {type:"tree",name:"Fio condutor / árvore",icon:"🌳",category:"Investigação",desc:"Nós de pistas com estados bloqueado, disponível e resolvido."},
+    {type:"mummy",name:"Múmia envolta em faixas",icon:"🧟",category:"Egito",desc:"Faixas de linho e selo funerário."},
+    {type:"lightTable",name:"Mesa de luz",icon:"▦",category:"Laboratório",desc:"Luz de LED para revelar negativos e documentos."},
+    {type:"developingTray",name:"Bandeja de revelação",icon:"▱",category:"Laboratório",desc:"Revele uma fotografia em etapas."},
+    {type:"developTimer",name:"Temporizador de revelação",icon:"⏱️",category:"Laboratório",desc:"Controle o tempo de revelação fotográfica."}
   ];
 }
 const catalog = objectCatalog();
@@ -450,7 +454,11 @@ function objectInside(node) {
     key:'<button class="object-action" data-item-action="key-use">Examinar chave</button>',
     coin:'<button class="object-action" data-item-action="coin-flip">Virar moeda</button>',
     trigger:'<button class="object-action gm-only-control" data-item-action="trigger-toggle">'+(node.props.activated?"Desativar gatilho":"Ativar gatilho")+'</button>',
-    tree:'<button class="object-action" data-item-action="tree-state">Alterar estado</button>'
+    tree:'<button class="object-action" data-item-action="tree-state">Alterar estado</button>',
+    mummy:'<button class="object-action" data-item-action="mummy-open">Examinar faixas</button>',
+    lightTable:'<button class="object-action" data-item-action="lighttable-toggle">'+(st==="on"?"Apagar mesa":"Acender mesa")+'</button>',
+    developingTray:'<button class="object-action" data-item-action="develop-toggle">Revelar fotografia</button>',
+    developTimer:'<button class="object-action" data-item-action="develop-timer">Iniciar contagem</button>'
   };
   let art=info.icon,sub=info.desc,screen="";
   if (type==="crystal") art='<div class="object-orb"></div>';
@@ -464,6 +472,9 @@ function objectInside(node) {
   if (type==="cat") art='<div class="object-art">🐈‍⬛<span style="color:#b4f58c;text-shadow:0 0 12px #b4f58c">● ●</span></div>';
   if (type==="pendulum") art='<div class="object-art" style="animation:'+(st==="on"?"wisp 1.5s infinite":"none")+'">🔻</div>';
   if (type==="tree") sub="Estado: "+({locked:"Bloqueado",available:"Disponível",solved:"Resolvido"}[node.props.treeState||"available"]);
+  if (type==="mummy") art='<div style="font:44px var(--serif);filter:drop-shadow(0 4px 4px #0009)">🧟</div><div class="hwwrap" data-n="2"></div>';
+  if (type==="lightTable") screen='<div class="object-screen" style="background:'+(st==="on"?"#c8e3d4":"#10191a")+';color:'+(st==="on"?"#173428":"#9ac4a4")+'">'+(st==="on"?"LUZ UV / LED":"DESLIGADA")+'</div>';
+  if (type==="developingTray") art='<div class="object-art">▱</div>';
   if (type==="safe" || type==="lockbox") screen='<div class="object-screen">'+(node.props.unlocked?"ABERTO":"TRANCADO")+'</div>';
   const action=buttons[type] || '<button class="object-action" data-item-action="generic">Interagir</button>';
   return '<div class="object-visual '+(type==="portal"?"object-portal":"")+'">'+art+screen+'<div class="object-sub">'+esc(info.name)+'</div><div class="object-state">'+esc(node.props.message || sub)+'</div>'+action+'</div>';
@@ -964,6 +975,10 @@ function runObjectAction(node,action) {
       if(!isGM)return toast("Somente o mestre pode acionar este mecanismo.");
       return change(()=>{node.props.activated=!node.props.activated;node.props.message=node.props.activated?"Gatilho ativado.":"Gatilho desativado.";});
     case "tree-state":return change(()=>{node.props.treeState=node.props.treeState==="locked"?"available":node.props.treeState==="available"?"solved":"locked";});
+    case "mummy-open":return change(()=>{node.props.objectState="on";node.props.message="As faixas escondem uma inscrição funerária. Há uma parte ainda presa sob o selo.";});
+    case "lighttable-toggle":return change(()=>{node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?"A luz atravessa o documento e revela marcas no verso.":"A mesa de luz foi apagada.";});
+    case "develop-toggle":return change(()=>{node.props.objectState="on";node.props.message="A imagem aparece lentamente na bandeja de revelação.";});
+    case "develop-timer":return showTimer(node);
     case "generic":return toast(node.props.message||"Objeto selecionado.");
   }
 }
@@ -991,6 +1006,7 @@ function renderEffects() {
     particles.push('<span style="position:absolute;left:'+left+'%;top:-30px;color:'+color+';font-size:'+(kind==="bat"?18:kind==="eye"?14:8+Math.random()*8)+'px;opacity:'+(kind==="eye"?.8:.35+Math.random()*.45)+';animation:qiParticle '+duration+'s linear '+delay+'s infinite">'+content+'</span>');
   }
   layer.innerHTML=particles.join("");
+  layer.style.display=count?"block":"none";
   const mode=boardState.settings.light.mode;
   document.body.classList.toggle("lamp-on",!!boardState.settings.lamp || mode==="lamp" || mode==="room");
   document.body.classList.toggle("torch-on",!!boardState.settings.torch || mode==="torch");
@@ -1221,8 +1237,8 @@ function addImageFromFile(file) {
       image.src=data;return;
     }
     if(type.startsWith("text/") || /\.(txt|md|csv|log)$/i.test(name)) {
-      const content=data.startsWith("data:")?atob(data.split(",")[1]):data;
-      addNode("document",{title:name.replace(/\.[^.]+$/,""),filename:name,body:content.slice(0,12000),w:280,h:300});return;
+      file.text().then((content)=>addNode("document",{title:name.replace(/\.[^.]+$/,""),filename:name,body:content.slice(0,12000),w:280,h:300}));
+      return;
     }
     if(type==="application/pdf" || /\.pdf$/i.test(name)) {
       if(data.length>1800000)return toast("PDF muito grande. Use um link externo ou um arquivo menor.");
@@ -1970,6 +1986,14 @@ async function handleMasterRequest(event) {
       remember();node.props.objectState="on";node.props.message=data.action==="coin-flip"?(Math.random()>.5?"Cara":"Coroa"):"O objeto foi examinado.";break;
     case "tree-state":
       remember();node.props.treeState=node.props.treeState==="locked"?"available":node.props.treeState==="available"?"solved":"locked";break;
+    case "mummy-open":
+      remember();node.props.objectState="on";node.props.message="Uma inscrição funerária aparece sob as faixas.";break;
+    case "lighttable-toggle":
+      remember();node.props.objectState=node.props.objectState==="on"?"idle":"on";node.props.message=node.props.objectState==="on"?"A mesa de luz foi acesa.":"A mesa de luz foi apagada.";break;
+    case "develop-toggle":
+      remember();node.props.objectState="on";node.props.message="A fotografia está sendo revelada.";break;
+    case "develop-timer":
+      remember();node.props.objectState="on";node.props.message="Temporizador de revelação iniciado.";break;
     case "timer-toggle":
       remember();node.props.objectState="on";node.props.message="O temporizador foi iniciado.";break;
     case "dial-turn":
