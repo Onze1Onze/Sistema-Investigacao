@@ -1908,6 +1908,7 @@ async function loadSceneWorkspace() {
 }
 async function setupOwlbear() {
   try {
+    OBR_API = OBR;
     if(!OBR_API || !OBR_API.isAvailable) {
       $("connection-text").textContent="Modo independente";
       return;
@@ -1925,7 +1926,10 @@ async function setupOwlbear() {
         roleName=await OBR_API.player.getName();
         playerColor=await OBR_API.player.getColor();
         playerSyncView=await OBR_API.player.getSyncView();
-      } catch(error) {isGM=true;canEdit=true;roleName="Mestre";}
+      } catch(error) {
+        console.warn("Não foi possível consultar o papel do jogador; acesso tratado como jogador.",error);
+        isGM=false;canEdit=false;roleName="Jogador";
+      }
       document.body.classList.toggle("player-view",!isGM);
       $("connection-text").textContent="Owlbear · conectado";
       sceneReady=await OBR_API.scene.isReady().catch(()=>false);
