@@ -1,0 +1,37 @@
+name: Validate extension
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate manifest and required files
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("manifest.json").read_text())
+          assert manifest["manifest_version"] == 1
+          assert manifest["action"]["popover"]
+          assert Path("index.html").is_file()
+          assert Path("icon.svg").is_file()
+          assert len(manifest["name"]) <= 45
+          assert len(manifest["description"]) <= 128
+          print("Manifest JSON OK; referenced app and icon files exist.")
+          PY
+      - name: Check inline module syntax
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path("index.html").read_text()
+          match = re.search(r'<script type="module">(.*?)</script>', html, re.S)
+          assert match, "Inline module not found"
+          Path("/tmp/extension.mjs").write_text(match.group(1))
+          PY
+          node --check /tmp/extension.mjs
