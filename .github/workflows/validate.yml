@@ -22,7 +22,7 @@ jobs:
           assert Path("icon.svg").is_file()
           assert len(manifest["name"]) <= 45
           assert len(manifest["description"]) <= 128
-          print("Manifest JSON OK; referenced app and icon files exist.")
+          print("Manifest JSON OK; app and icon files exist.")
           PY
       - name: Check inline module syntax
         run: |
@@ -35,3 +35,20 @@ jobs:
           Path("/tmp/extension.mjs").write_text(match.group(1))
           PY
           node --check /tmp/extension.mjs
+      - name: Verify public CDN files return HTTP 200
+        run: |
+          set -euo pipefail
+          curl -fLsS "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@main/manifest.json" -o /tmp/manifest.json
+          curl -fLsS "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@b5be42ffdc9ce767d4f11c423ff1e5cb1b3ae313/index.html" -o /tmp/index.html
+          curl -fLsS "https://cdn.jsdelivr.net/gh/Onze1Onze/Sistema-Investigacao@b5be42ffdc9ce767d4f11c423ff1e5cb1b3ae313/icon.svg" -o /tmp/icon.svg
+          curl -fLsS "https://esm.sh/@owlbear-rodeo/sdk@3.1.0" -o /tmp/obr-sdk.js
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path("/tmp/manifest.json").read_text())
+          assert manifest["action"]["popover"].endswith("/index.html")
+          assert Path("/tmp/index.html").stat().st_size > 1000
+          assert "<svg" in Path("/tmp/icon.svg").read_text()
+          assert Path("/tmp/obr-sdk.js").stat().st_size > 100
+          print("CDN manifest, HTML, icon and SDK are reachable.")
+          PY
