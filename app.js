@@ -37,6 +37,7 @@ let selectedIds = [];
 let wireStart = null;
 let drag = null;
 let pan = null;
+let dropTargetIds = new Set();
 let marquee = null;
 let drawState = null;
 let zoom = 1;
@@ -548,6 +549,7 @@ function itemClasses(node) {
   }
   if (node.uvSecret) c.push("uv-hidden");
   if (node.locked) c.push("locked");
+  if(dropTargetIds.has(node.id))c.push("drop-target");
   if((privateData.handIds||[]).includes(node.id))c.push("grabbed");
   if((privateData.pocketIds||[]).includes(node.id))c.push("inpocket");
   return c.join(" ");
@@ -1541,6 +1543,7 @@ function updateItemPosition(ids) {
 function pointerUp() {
   if(drag) {
     const old=drag;drag=null;
+    if(old.type==="move")handleDropInteractions((old.group||[]).map((g)=>g.id));
     if(old.type==="move" && Math.abs(old.vx)+Math.abs(old.vy)>1.3) {
       let vx=old.vx,vy=old.vy,steps=0;const ids=old.group.map((g)=>g.id);
       const momentum=()=>{
@@ -1554,6 +1557,7 @@ function pointerUp() {
       };
       requestAnimationFrame(momentum);
     } else {renderItems();scheduleSave();}
+    dropTargetIds.clear();
   }
   if(pan){pan=null;document.body.classList.remove("panning");scheduleSave();}
   if(drawState) {
@@ -2327,4 +2331,83 @@ function quickAction(action) {
   if(action==="pocket")return putInPocket(node);
   if(action==="duplicate")return duplicateSelected();
   if(action==="delete")return deleteSelected();
+}
+
+function boxesOverlap(a,b) {
+  return a.x+a.w>b.x && a.x<b.x+b.w && a.y+a.h>b.y && a.y<b.y+b.h;
+}
+function updateDropHighlights(movingIds) {
+  const moving=new Set(movingIds);
+  const targets=new Set();
+  movingIds.forEach((id)=>{
+    const source=getNode(id);if(!source)return;
+    boardState.nodes.forEach((target)=>{
+      if(moving.has(target.id)||target.gmOnly&&!isGM)return;
+      if(boxesOverlap(source,target))targets.add(target.id);
+    });
+  });
+  if(targets.size!==dropTargetIds.size||Array.from(targets).some((id)=>!dropTargetIds.has(id))) {
+    dropTargetIds=targets;
+    itemLayer.querySelectorAll(".item").forEach((el)=>el.classList.toggle("drop-target",dropTargetIds.has(el.dataset.item)));
+  }
+}
+function applyObjectDrop(source,target) {
+  if(source.type!=="object" || target.type!=="object")return null;
+  const a=source.props.objectType,b=target.props.objectType;
+  if(a==="key"&&(b==="lockbox"||b==="safe")) {
+    target.props.unlocked=true;target.props.objectState="open";target.props.message="Uma chave compatível destrancou o mecanismo.";
+    return "A chave encaixou e destrancou o mecanismo.";
+  }
+  if(a==="coin"&&b==="scale") {
+    target.props.beam=0;target.props.message="A moeda foi colocada no prato. A balança se estabiliza.";
+    return "A moeda foi colocada na balança.";
+  }
+  if(a==="holyWater"&&(b==="vampireMirror"||b==="mirror"||b==="mirrorBlack")) {
+    target.props.objectState="on";target.props.message="A água benta provoca fumaça no espelho e revela marcas ocultas.";
+    return "A água benta reage com o espelho.";
+  }
+  if(a==="ankh"&&b==="portal") {
+    target.props.objectState="idle";target.props.message="O ankh fecha a passagem e interrompe o vórtice.";
+    return "O ankh selou o portal.";
+  }
+  if(a==="pouch"&&b==="cauldron") {
+    target.props.objectState="on";target.props.message="As ervas foram adicionadas. A mistura libera um vapor violeta.";
+    return "As ervas foram colocadas no caldeirão.";
+  }
+  if(a==="key"&&b==="brickWall") {
+    target.props.objectState="on";target.props.message="A chave encontra uma cavidade e aciona uma trava dentro da parede.";
+    return "A chave acionou o mecanismo escondido na parede.";
+  }
+  if(a==="trigger"&&b==="portal") {
+    target.props.objectState=target.props.objectState==="on"?"idle":"on";
+    target.props.message=target.props.objectState==="on"?"O ativador abriu o portal.":"O ativador fechou o portal.";
+    return "O ativador alterou o estado do portal.";
+  }
+  if(a==="holyWater"&&b==="skull") {
+    target.props.message="O crânio reage ao líquido consagrado e sussurra uma palavra.";
+    return "O crânio reagiu à água benta.";
+  }
+  if(a==="key"&&b==="tree") {
+    target.props.treeState="available";target.props.message="A chave liberou um novo ramo de pistas.";
+    return "Um novo ramo da investigação ficou disponível.";
+  }
+  return null;
+}
+function handleDropInteractions(movedIds) {
+  if(!isGM || !canEdit)return;
+  const moving=new Set(movedIds),events=[];
+  movedIds.forEach((id)=>{
+    const source=getNode(id);if(!source)return;
+    boardState.nodes.forEach((target)=>{
+      if(moving.has(target.id)||target.gmOnly&&!isGM||!boxesOverlap(source,target))return;
+      const result=applyObjectDrop(source,target);
+      if(result)events.push({source:source.title,target:target.title,message:result});
+    });
+  });
+  if(events.length) {
+    remember();
+    renderAll();scheduleSave();
+    const body=events.map((event)=>'<div class="info-card"><strong>'+esc(event.message)+'</strong><small>'+esc(event.source)+' → '+esc(event.target)+'</small></div>').join("");
+    openModal("Interação entre evidências",body,[{label:"Continuar investigação",primary:true,action:closeModal}]);
+  }
 }
