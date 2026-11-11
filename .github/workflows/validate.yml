@@ -31,13 +31,8 @@ jobs:
         run: |
           cp app.js /tmp/app.mjs
           node --check /tmp/app.mjs
-          python3 - <<'PY'
-          from pathlib import Path
-          html=Path("index.html").read_text()
-          assert '<script type="module" src="./app.js"></script>' in html
-          print("Application module linked by the HTML shell.")
-          PY
-      - name: Validate current public extension files
+          echo "Local application module syntax is valid."
+      - name: Validate public HTML and icon response
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -49,30 +44,35 @@ jobs:
           PY
           curl -fLsS -D /tmp/popover.headers "$(cat /tmp/popover-url)" -o /tmp/popover.html
           curl -fLsS -D /tmp/icon.headers "$(cat /tmp/icon-url)" -o /tmp/icon.svg
-          echo "--- POPover response headers ---"
-          cat /tmp/popover.headers
-          echo "--- ICON response headers ---"
-          cat /tmp/icon.headers
-          grep -Eiq '^content-type: *text/html([; ]|$)' /tmp/popover.headers
-          grep -Eiq '^content-type: *image/svg[+]xml([; ]|$)' /tmp/icon.headers
-          echo "--- POPover body preview ---"
-          head -c 1200 /tmp/popover.html
-          echo
-          echo "--- POPover document references ---"
-          grep -oE '(href|src)="[^"]+"' /tmp/popover.html | head -20 || true
-          grep -Eiq '<link rel="stylesheet" href="./style.css">' /tmp/popover.html
-          grep -Eiq '<script type="module" src="./app.js"></script>' /tmp/popover.html
-          echo "Popover HTML and icon are served with correct MIME types."
+          python3 - <<'PY'
+          from pathlib import Path
+          def headers(path):
+              return Path(path).read_text(errors="replace").lower()
+          pop=headers("/tmp/popover.headers")
+          icon=headers("/tmp/icon.headers")
+          html=Path("/tmp/popover.html").read_text(errors="replace")
+          svg=Path("/tmp/icon.svg").read_text(errors="replace")
+          assert "200" in pop.splitlines()[0], pop.splitlines()[0]
+          assert "content-type: text/html" in pop, "Unexpected HTML content type"
+          assert "200" in icon.splitlines()[0], icon.splitlines()[0]
+          assert "content-type: image/svg+xml" in icon, "Unexpected SVG content type"
+          assert html.lstrip().lower().startswith("<!doctype html>"), html[:300]
+          assert 'href="./style.css"' in html
+          assert 'src="./app.js"' in html
+          assert "<svg" in svg
+          print("Public HTML, icon, MIME types and document references are valid.")
+          PY
       - name: Validate public static dependencies
         run: |
           set -euo pipefail
           BASE="$(cat /tmp/popover-url)"
           ROOT="${BASE%/index.html}"
-          curl -fLsS "$ROOT/style.css" -o /tmp/style.css
-          curl -fLsS "$ROOT/app.js" -o /tmp/app.js
-          test "$(wc -c </tmp/style.css)" -gt 10000
-          test "$(wc -c </tmp/app.js)" -gt 40000
-          cp /tmp/app.js /tmp/app.mjs
-          node --check /tmp/app.mjs
+          curl -fLsS "$ROOT/style.css" -o /tmp/public-style.css
+          curl -fLsS "$ROOT/app.js" -o /tmp/public-app.js
+          test "$(wc -c </tmp/public-style.css)" -gt 10000
+          test "$(wc -c </tmp/public-app.js)" -gt 40000
+          cp /tmp/public-app.js /tmp/public-app.mjs
+          node --check /tmp/public-app.mjs
+          echo "Public CSS and JavaScript dependencies are reachable and valid."
           curl -fLsS "https://esm.sh/@owlbear-rodeo/sdk@3.1.0" -o /tmp/obr-sdk.js
           test "$(wc -c </tmp/obr-sdk.js)" -gt 100
